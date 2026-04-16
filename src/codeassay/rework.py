@@ -5,6 +5,7 @@ import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from codeassay.classifier import classify_rework
 from codeassay.db import get_ai_commits, insert_rework_event
 from codeassay.ignore import filter_files, load_ignore_patterns
 
@@ -231,15 +232,35 @@ def detect_rework(
                 else:
                     reason = "line_overlap"
 
-                confidence = "medium"
                 if is_ai_on_ai:
                     reason = f"ai_on_ai:{reason}"
+
+                # Classify the rework event
+                total_added = 0
+                total_removed = 0
+                for f in all_affected:
+                    a, r = _get_file_diff_stats(repo_path, later["hash"], f)
+                    total_added += a
+                    total_removed += r
+                original_lines = sum(
+                    _get_file_line_count(repo_path, later["hash"], f)
+                    for f in all_affected
+                )
+
+                classification = classify_rework(
+                    commit_message=later["message"],
+                    lines_added=total_added,
+                    lines_removed=total_removed,
+                    total_original_lines=original_lines,
+                    files_affected=all_affected,
+                )
 
                 insert_rework_event(
                     conn, original_commit=ai_commit["commit_hash"],
                     rework_commit=later["hash"], repo_path=repo_str,
-                    rework_date=later["date"], category="unclassified",
-                    confidence=confidence,
+                    rework_date=later["date"],
+                    category=classification.category,
+                    confidence=classification.confidence,
                     files_affected=",".join(all_affected),
                     detection_reason=reason,
                 )
