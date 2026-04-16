@@ -45,6 +45,25 @@ codeassay scan ../repo1 ../repo2 ../repo3
 - Bug fix, Misunderstanding, Test failure, Style/convention violation
 - Security issue, Incomplete implementation, Over-engineering
 
+## Ignoring Files
+
+Create a `.codeassayignore` file in your repo root to exclude files from analysis. Uses gitignore-style patterns:
+
+```
+# Exclude documentation and config noise
+*.md
+.DS_Store
+.organization
+
+# Exclude a directory (one level)
+docs/*
+
+# Exclude a directory (recursive)
+docs/**
+```
+
+Ignored files are filtered from both AI commit tracking and rework detection, giving you cleaner metrics focused on actual code quality.
+
 ## Data Storage
 
 Scan data is stored in `.codeassay/quality.db` (SQLite) inside each scanned repo. Query it directly with any SQL tool:
