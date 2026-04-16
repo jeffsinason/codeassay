@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from codeassay.db import get_ai_commits, insert_rework_event
+from codeassay.ignore import filter_files, load_ignore_patterns
 
 DEPENDENCY_FILE_PATTERNS = [
     re.compile(r"requirements.*\.txt$"),
@@ -157,6 +158,7 @@ def detect_rework(
 ) -> dict:
     repo_path = Path(repo_path).resolve()
     repo_str = str(repo_path)
+    ignore_patterns = load_ignore_patterns(repo_path)
     ai_commits = get_ai_commits(conn, repo_path=repo_str)
 
     if not ai_commits:
@@ -185,7 +187,11 @@ def detect_rework(
                 continue
 
             files = _get_commit_files(repo_path, later["hash"])
+            files = filter_files(files, ignore_patterns)
             file_count = len(files)
+
+            if not files:
+                continue
 
             if is_excluded_commit(files, later["message"], file_count, refactor_threshold):
                 continue

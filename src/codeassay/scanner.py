@@ -9,6 +9,7 @@ from codeassay.db import (
     insert_ai_commit,
     set_last_scanned_commit,
 )
+from codeassay.ignore import filter_files_csv, load_ignore_patterns
 
 AI_TOOL_PATTERNS = [
     (re.compile(r"Co-Authored-By:.*Claude", re.IGNORECASE), "claude_code"),
@@ -92,6 +93,7 @@ def parse_commit_log(repo_path: Path, since_commit: str | None = None) -> list[d
 def scan_repo(repo_path: Path, conn, branch: str | None = None) -> dict:
     repo_path = Path(repo_path).resolve()
     repo_str = str(repo_path)
+    ignore_patterns = load_ignore_patterns(repo_path)
     last_commit = get_last_scanned_commit(conn, repo_str)
     commits = parse_commit_log(repo_path, since_commit=last_commit)
     ai_count = 0
@@ -101,6 +103,9 @@ def scan_repo(repo_path: Path, conn, branch: str | None = None) -> dict:
             method = _get_detection_method(commit["message"])
             confidence = get_detection_confidence(method)
             files = _get_changed_files(repo_path, commit["hash"])
+            files = filter_files_csv(files, ignore_patterns)
+            if not files:
+                continue
             insert_ai_commit(
                 conn, commit_hash=commit["hash"], repo_path=repo_str,
                 author=commit["author"], date=commit["date"], message=commit["message"],
