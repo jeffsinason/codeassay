@@ -21,6 +21,7 @@ DEPENDENCY_FILE_PATTERNS = [
 
 DEFAULT_REFACTOR_THRESHOLD = 10
 DEFAULT_TIME_WINDOW_DAYS = 14
+DEFAULT_REWRITE_THRESHOLD = 0.5  # If >50% of lines are replaced, it's a file-level rewrite
 
 
 def is_excluded_commit(
@@ -76,9 +77,13 @@ def get_blame_origins(repo_path: Path, commit_hash: str, file_path: str) -> set[
     current_blame_line = 0
     for bline in blame_result.stdout.split("\n"):
         parts = bline.split()
-        if len(parts) >= 3 and len(parts[0]) == 40:
-            current_origin = parts[0]
-            current_blame_line = int(parts[2])
+        # Blame header line: <40-char hex hash> <orig_line> <final_line> [<num_lines>]
+        if len(parts) >= 3 and len(parts[0]) == 40 and all(c in "0123456789abcdef" for c in parts[0]):
+            try:
+                current_origin = parts[0]
+                current_blame_line = int(parts[2])
+            except ValueError:
+                continue
         if current_origin and current_blame_line in changed_lines:
             origins.add(current_origin)
 
@@ -91,6 +96,34 @@ def _get_commit_files(repo_path: Path, commit_hash: str) -> list[str]:
         cwd=repo_path, capture_output=True, text=True,
     )
     return [f for f in result.stdout.strip().split("\n") if f]
+
+
+def _get_file_diff_stats(repo_path: Path, commit_hash: str, file_path: str) -> tuple[int, int]:
+    """Get (lines_added, lines_removed) for a specific file in a commit."""
+    result = subprocess.run(
+        ["git", "diff", "--numstat", f"{commit_hash}~1..{commit_hash}", "--", file_path],
+        cwd=repo_path, capture_output=True, text=True,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        return (0, 0)
+    parts = result.stdout.strip().split("\t")
+    if len(parts) >= 2:
+        try:
+            return (int(parts[0]), int(parts[1]))
+        except ValueError:
+            return (0, 0)
+    return (0, 0)
+
+
+def _get_file_line_count(repo_path: Path, commit_hash: str, file_path: str) -> int:
+    """Get the number of lines in a file at a specific commit's parent."""
+    result = subprocess.run(
+        ["git", "show", f"{commit_hash}~1:{file_path}"],
+        cwd=repo_path, capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return 0
+    return len(result.stdout.split("\n"))
 
 
 def _get_commits_since(repo_path: Path, since_hash: str, until_date_limit: str | None = None) -> list[dict]:
@@ -108,10 +141,19 @@ def _get_commits_since(repo_path: Path, since_hash: str, until_date_limit: str |
     return commits
 
 
+def _normalize_date(date_str: str) -> datetime:
+    """Parse an ISO date string and normalize to naive datetime for comparison."""
+    dt = datetime.fromisoformat(date_str)
+    if dt.tzinfo is not None:
+        dt = datetime(*dt.utctimetuple()[:6])
+    return dt
+
+
 def detect_rework(
     repo_path: Path, conn,
     time_window_days: int = DEFAULT_TIME_WINDOW_DAYS,
     refactor_threshold: int = DEFAULT_REFACTOR_THRESHOLD,
+    rewrite_threshold: float = DEFAULT_REWRITE_THRESHOLD,
 ) -> dict:
     repo_path = Path(repo_path).resolve()
     repo_str = str(repo_path)
@@ -130,21 +172,16 @@ def detect_rework(
     rework_count = 0
 
     for ai_commit in ai_commits:
-        ai_date = datetime.fromisoformat(ai_commit["date"])
-        if ai_date.tzinfo is not None:
-            ai_date = datetime(*ai_date.utctimetuple()[:6])
+        ai_date = _normalize_date(ai_commit["date"])
         window_end = ai_date + timedelta(days=time_window_days)
         later_commits = _get_commits_since(repo_path, ai_commit["commit_hash"])
 
         for later in later_commits:
-            later_date = datetime.fromisoformat(later["date"])
-            # Normalize to naive UTC for comparison
-            if later_date.tzinfo is not None:
-                later_date = later_date.utctimetuple()
-                later_date = datetime(*later_date[:6])
-            if later_date > window_end.replace(tzinfo=None):
+            later_date = _normalize_date(later["date"])
+            if later_date > window_end:
                 continue
-            if later["hash"] in ai_hashes:
+            # Don't count a commit as rework on itself
+            if later["hash"] == ai_commit["commit_hash"]:
                 continue
 
             files = _get_commit_files(repo_path, later["hash"])
@@ -153,20 +190,52 @@ def detect_rework(
             if is_excluded_commit(files, later["message"], file_count, refactor_threshold):
                 continue
 
-            overlapping_files = []
-            for f in files:
-                if f in ai_files_map and ai_commit["commit_hash"] in ai_files_map[f]:
-                    origins = get_blame_origins(repo_path, later["hash"], f)
-                    if ai_commit["commit_hash"] in origins:
-                        overlapping_files.append(f)
+            # Determine if this is AI-on-AI rework
+            is_ai_on_ai = later["hash"] in ai_hashes
 
-            if overlapping_files:
+            overlapping_files = []
+            rewrite_files = []
+
+            for f in files:
+                if f not in ai_files_map or ai_commit["commit_hash"] not in ai_files_map[f]:
+                    continue
+
+                # Check 1: Line-level overlap via git blame
+                origins = get_blame_origins(repo_path, later["hash"], f)
+                if ai_commit["commit_hash"] in origins:
+                    overlapping_files.append(f)
+                    continue
+
+                # Check 2: File-level rewrite detection
+                # If a large portion of the file is replaced, it's a rewrite
+                # even if blame can't trace individual lines back
+                added, removed = _get_file_diff_stats(repo_path, later["hash"], f)
+                original_lines = _get_file_line_count(repo_path, later["hash"], f)
+                if original_lines > 0 and removed > 0:
+                    removal_ratio = removed / original_lines
+                    if removal_ratio >= rewrite_threshold:
+                        rewrite_files.append(f)
+
+            all_affected = overlapping_files + rewrite_files
+            if all_affected:
+                if overlapping_files and rewrite_files:
+                    reason = "line_overlap+file_rewrite"
+                elif rewrite_files:
+                    reason = "file_rewrite"
+                else:
+                    reason = "line_overlap"
+
+                confidence = "medium"
+                if is_ai_on_ai:
+                    reason = f"ai_on_ai:{reason}"
+
                 insert_rework_event(
                     conn, original_commit=ai_commit["commit_hash"],
                     rework_commit=later["hash"], repo_path=repo_str,
                     rework_date=later["date"], category="unclassified",
-                    confidence="medium", files_affected=",".join(overlapping_files),
-                    detection_reason="line_overlap",
+                    confidence=confidence,
+                    files_affected=",".join(all_affected),
+                    detection_reason=reason,
                 )
                 rework_count += 1
 
