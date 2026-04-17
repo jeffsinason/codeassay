@@ -130,13 +130,29 @@ Chart.defaults.borderColor = '#334155';
 // Category doughnut
 if (Object.keys(DATA.rework_by_category).length > 0) {{
   const cats = Object.entries(DATA.rework_by_category).sort((a,b) => b[1] - a[1]);
+  const catTotal = cats.reduce((s, c) => s + c[1], 0);
   new Chart(document.getElementById('categoryChart'), {{
     type: 'doughnut',
     data: {{
-      labels: cats.map(c => LABELS[c[0]] || c[0]),
+      labels: cats.map(c => {{
+        const pct = (c[1] / catTotal * 100).toFixed(1);
+        return (LABELS[c[0]] || c[0]) + ' (' + pct + '%)';
+      }}),
       datasets: [{{ data: cats.map(c => c[1]), backgroundColor: cats.map(c => COLORS[c[0]] || '#64748b') }}]
     }},
-    options: {{ plugins: {{ legend: {{ position: 'right' }} }} }}
+    options: {{
+      plugins: {{
+        legend: {{ position: 'right' }},
+        tooltip: {{
+          callbacks: {{
+            label: function(ctx) {{
+              const pct = (ctx.parsed / catTotal * 100).toFixed(1);
+              return ctx.label.split(' (')[0] + ': ' + ctx.parsed + ' (' + pct + '%)';
+            }}
+          }}
+        }}
+      }}
+    }}
   }});
 }}
 
