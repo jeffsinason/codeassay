@@ -1,0 +1,69 @@
+name: No AI attribution
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Block AI co-author trailers on new commits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine commit range
+        id: range
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+          else
+            base="${{ github.event.before }}"
+            head="${{ github.event.after }}"
+            if [ "$base" = "0000000000000000000000000000000000000000" ] || [ -z "$base" ]; then
+              base=$(git rev-parse HEAD~1 2>/dev/null || echo "$head")
+            fi
+          fi
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "head=$head" >> "$GITHUB_OUTPUT"
+
+      - name: Check commits for AI attribution
+        env:
+          CUTOFF: "2026-04-18T00:00:00Z"
+          BASE: ${{ steps.range.outputs.base }}
+          HEAD: ${{ steps.range.outputs.head }}
+        run: |
+          set -u
+          cutoff_epoch=$(date -u -d "$CUTOFF" +%s)
+          violations=""
+          for sha in $(git rev-list "$BASE..$HEAD" 2>/dev/null); do
+            commit_iso=$(git log -1 --format='%cI' "$sha")
+            commit_epoch=$(date -u -d "$commit_iso" +%s)
+            if [ "$commit_epoch" -lt "$cutoff_epoch" ]; then
+              continue
+            fi
+            msg=$(git log -1 --format='%B' "$sha")
+            if printf '%s' "$msg" | grep -qE -i '^co-authored-by:[[:space:]]*(claude|.*@anthropic\.com|.*\[bot\]@users\.noreply\.github\.com)'; then
+              violations="${violations}\n  $sha  $(git log -1 --format='%s' "$sha")"
+              continue
+            fi
+            if printf '%s' "$msg" | grep -qE -i 'generated with \[?claude code\]?|noreply@anthropic\.com'; then
+              violations="${violations}\n  $sha  $(git log -1 --format='%s' "$sha")"
+            fi
+          done
+          if [ -n "$violations" ]; then
+            echo "::error::Commits contain AI attribution trailers (after $CUTOFF grandfather cutoff):"
+            printf '%b\n' "$violations"
+            echo ""
+            echo "Remove 'Co-Authored-By: Claude ...', '@anthropic.com', and 'Generated with Claude Code' lines"
+            echo "from commit messages. See EchoForgeX/CLAUDE.md → Authorship Policy."
+            echo "Local prepare-commit-msg hook in tools/git-hooks/ strips these automatically."
+            exit 1
+          fi
+          echo "Clean — no disallowed AI attribution trailers on new commits."
