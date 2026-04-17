@@ -31,6 +31,7 @@ codeassay scan ../repo1 ../repo2 ../repo3
 | `codeassay rework` | List rework events with classification |
 | `codeassay reclassify <commit> <category>` | Override a classification |
 | `codeassay export --format json` | Export raw data |
+| `codeassay dashboard` | Open interactive HTML dashboard in browser |
 
 ## How It Works
 
@@ -44,6 +45,23 @@ codeassay scan ../repo1 ../repo2 ../repo3
 **Classification** categorizes rework into 7 types using commit message keywords and diff shape analysis:
 - Bug fix, Misunderstanding, Test failure, Style/convention violation
 - Security issue, Incomplete implementation, Over-engineering
+
+## Dashboard
+
+Generate an interactive HTML dashboard with charts and visualizations:
+
+```bash
+codeassay dashboard
+```
+
+Opens a self-contained HTML file in your browser with:
+- Summary metric cards (AI commit rate, first-pass success, rework rate, MTTR)
+- Rework category doughnut chart with percentages
+- Monthly trend line chart (AI commits vs rework events)
+- Top rework file hotspots
+- Rework by AI tool comparison
+
+The dashboard works offline, requires no server, and is shareable — copy the HTML file to screenshot or embed in publications. Use `--no-open` to generate without opening the browser, or `--output path.html` to save to a custom location.
 
 ## Ignoring Files
 
