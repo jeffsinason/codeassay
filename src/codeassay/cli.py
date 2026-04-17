@@ -11,7 +11,8 @@ from codeassay.db import (
     get_connection, get_rework_events, get_ai_commits,
     init_db, set_rework_override,
 )
-from codeassay.metrics import compute_metrics
+from codeassay.dashboard import generate_dashboard
+from codeassay.metrics import compute_metrics, compute_trend_data
 from codeassay.reporting import format_cli_report, format_markdown_report
 from codeassay.rework import detect_rework
 from codeassay.scanner import scan_repo
@@ -83,6 +84,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     export_p = sub.add_parser("export", help="Export raw data")
     export_p.add_argument("--format", choices=["json"], default="json")
+
+    dash_p = sub.add_parser("dashboard", help="Open interactive HTML dashboard")
+    dash_p.add_argument("--output", help="Output file path (default: .codeassay/dashboard.html)")
+    dash_p.add_argument("--no-open", action="store_true", help="Don't open browser automatically")
 
     return parser
 
@@ -216,6 +221,35 @@ def cmd_export(args) -> None:
     conn.close()
 
 
+def cmd_dashboard(args) -> None:
+    """Generate and open an interactive HTML dashboard."""
+    import webbrowser
+
+    repo_path = Path.cwd().resolve()
+    db_path = get_db_path(repo_path)
+    if not db_path.exists():
+        print("No scan data found. Run 'codeassay scan .' first.", file=sys.stderr)
+        sys.exit(1)
+
+    conn = get_connection(db_path)
+    total = _get_total_commit_count(repo_path)
+    metrics = compute_metrics(conn, repo_path=str(repo_path), total_commits=total)
+    trend = compute_trend_data(conn, repo_path=str(repo_path))
+    name = _get_repo_name(repo_path)
+
+    html = generate_dashboard(metrics, trend, repo_name=name)
+
+    output_path = Path(args.output) if args.output else db_path.parent / "dashboard.html"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(html)
+
+    print(f"Dashboard saved to {output_path}")
+    if not args.no_open:
+        webbrowser.open(f"file://{output_path.resolve()}")
+
+    conn.close()
+
+
 COMMANDS = {
     "scan": cmd_scan,
     "report": cmd_report,
@@ -223,6 +257,7 @@ COMMANDS = {
     "rework": cmd_rework,
     "reclassify": cmd_reclassify,
     "export": cmd_export,
+    "dashboard": cmd_dashboard,
 }
 
 

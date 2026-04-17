@@ -57,6 +57,7 @@ def compute_metrics(conn, *, repo_path: str | None = None, total_commits: int = 
 
     return {
         "ai_commit_count": ai_count,
+        "human_commit_count": total_commits - ai_count,
         "total_commits": total_commits,
         "ai_commit_rate": round(ai_commit_rate, 1),
         "rework_count": rework_count,
@@ -68,3 +69,43 @@ def compute_metrics(conn, *, repo_path: str | None = None, total_commits: int = 
         "mean_time_to_rework_hours": round(mean_time_hours, 1),
         "top_rework_files": top_files,
     }
+
+
+def compute_trend_data(conn, *, repo_path: str | None = None) -> list[dict]:
+    """Group AI commits and rework events by month for trend charting.
+
+    Returns list of dicts: [{"month": "2026-01", "ai_commits": 12, "rework_events": 3}, ...]
+    """
+    if repo_path:
+        ai_rows = conn.execute(
+            "SELECT strftime('%Y-%m', date) as month, COUNT(*) as cnt "
+            "FROM ai_commits WHERE repo_path = ? GROUP BY month ORDER BY month",
+            (repo_path,),
+        ).fetchall()
+        rework_rows = conn.execute(
+            "SELECT strftime('%Y-%m', rework_date) as month, COUNT(*) as cnt "
+            "FROM rework_events WHERE repo_path = ? GROUP BY month ORDER BY month",
+            (repo_path,),
+        ).fetchall()
+    else:
+        ai_rows = conn.execute(
+            "SELECT strftime('%Y-%m', date) as month, COUNT(*) as cnt "
+            "FROM ai_commits GROUP BY month ORDER BY month",
+        ).fetchall()
+        rework_rows = conn.execute(
+            "SELECT strftime('%Y-%m', rework_date) as month, COUNT(*) as cnt "
+            "FROM rework_events GROUP BY month ORDER BY month",
+        ).fetchall()
+
+    ai_by_month = {r["month"]: r["cnt"] for r in ai_rows}
+    rework_by_month = {r["month"]: r["cnt"] for r in rework_rows}
+
+    all_months = sorted(set(ai_by_month) | set(rework_by_month))
+    return [
+        {
+            "month": m,
+            "ai_commits": ai_by_month.get(m, 0),
+            "rework_events": rework_by_month.get(m, 0),
+        }
+        for m in all_months
+    ]

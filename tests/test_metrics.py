@@ -3,7 +3,7 @@
 import pytest
 
 from codeassay.db import insert_ai_commit, insert_rework_event
-from codeassay.metrics import compute_metrics
+from codeassay.metrics import compute_metrics, compute_trend_data
 
 
 def _seed_data(conn, repo="/tmp/repo"):
@@ -66,3 +66,34 @@ def test_compute_metrics_top_rework_files(db_conn):
     _seed_data(db_conn)
     m = compute_metrics(db_conn, repo_path="/tmp/repo", total_commits=10)
     assert len(m["top_rework_files"]) >= 1
+
+
+def test_compute_trend_data(db_conn):
+    _seed_data(db_conn)
+    trend = compute_trend_data(db_conn, repo_path="/tmp/repo")
+    assert len(trend) >= 1
+    assert trend[0]["month"] == "2026-04"
+    assert trend[0]["ai_commits"] == 3
+    assert trend[0]["rework_events"] == 2
+
+
+def test_compute_trend_data_empty(db_conn):
+    trend = compute_trend_data(db_conn, repo_path="/tmp/repo")
+    assert trend == []
+
+
+def test_compute_trend_data_multiple_months(db_conn):
+    _seed_data(db_conn)
+    # Add a commit in a different month
+    insert_ai_commit(
+        db_conn, commit_hash="ddd444", repo_path="/tmp/repo", author="Test",
+        date="2026-03-15T10:00:00", message="feat: march thing",
+        tool="claude_code", detection_method="co_author_trailer",
+        confidence="high", files_changed="src/march.py",
+    )
+    trend = compute_trend_data(db_conn, repo_path="/tmp/repo")
+    assert len(trend) == 2
+    assert trend[0]["month"] == "2026-03"
+    assert trend[0]["ai_commits"] == 1
+    assert trend[0]["rework_events"] == 0
+    assert trend[1]["month"] == "2026-04"
