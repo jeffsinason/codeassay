@@ -1,0 +1,5 @@
+{
+  "name": "codeassay",
+  "description": "AI code quality analysis — scan repos, detect rework, classify root causes, generate reports and dashboards",
+  "version": "0.1.0"
+}

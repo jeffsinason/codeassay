@@ -1,0 +1,15 @@
+{
+  "name": "codeassay",
+  "description": "Git forensics tool for analyzing AI-authored code quality",
+  "owner": {
+    "name": "Jeff Sinason",
+    "email": "jeffsinason@echoforgex.com"
+  },
+  "plugins": [
+    {
+      "name": "codeassay",
+      "source": "./",
+      "description": "AI code quality analysis — scan repos, detect rework, classify root causes, generate reports and dashboards"
+    }
+  ]
+}
