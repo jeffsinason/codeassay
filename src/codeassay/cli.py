@@ -15,7 +15,11 @@ from codeassay.dashboard import generate_dashboard
 from codeassay.metrics import compute_metrics, compute_trend_data
 from codeassay.reporting import format_cli_report, format_markdown_report
 from codeassay.rework import detect_rework
-from codeassay.scanner import scan_repo
+from codeassay.detection import classify
+from codeassay.detection.config import load_config
+from codeassay.detection.profiles import load_profiles
+from codeassay.detection.scorer import per_signal_contributions
+from codeassay.scanner import scan_repo, _branches_containing
 from codeassay.tag import (
     add_trailer_to_message_file, amend_head_with_trailer,
     install_hook, uninstall_hook,
@@ -109,6 +113,9 @@ def build_parser() -> argparse.ArgumentParser:
     config_init_p = config_sub.add_parser("init", help="Write starter .codeassay.toml")
     config_init_p.add_argument("--force", action="store_true")
     config_show_p = config_sub.add_parser("show", help="Print merged effective config")
+
+    dt_p = sub.add_parser("detect-test", help="Dry-run detection against one commit")
+    dt_p.add_argument("commit", help="Commit hash")
 
     return parser
 
@@ -292,6 +299,48 @@ def _config_show(repo_path: Path) -> None:
     print(f"Scorer enabled: {cfg.score.enabled} (threshold={cfg.score.threshold})")
 
 
+def cmd_detect_test(args) -> None:
+    repo_path = Path.cwd().resolve()
+    result = subprocess.run(
+        ["git", "log", "-1", f"--format=%H%n%an%n%ae%n%aI%n%B", args.commit],
+        cwd=repo_path, capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        print(f"commit {args.commit} not found", file=sys.stderr)
+        sys.exit(1)
+    lines = result.stdout.splitlines()
+    if len(lines) < 5:
+        print("unexpected git log output", file=sys.stderr)
+        sys.exit(1)
+    commit = {
+        "hash": lines[0],
+        "author": lines[1],
+        "author_email": lines[2],
+        "date": lines[3],
+        "message": "\n".join(lines[4:]),
+        "branches": _branches_containing(repo_path, args.commit),
+    }
+    config = load_config(repo_path)
+    profiles = load_profiles(disabled=config.disabled_profiles)
+    detection = classify(commit, config=config, profiles=profiles)
+    print(f"Commit: {commit['hash'][:12]} by {commit['author']} <{commit['author_email']}>")
+    print(f"Branches containing this commit: {sorted(commit['branches']) or '(none)'}")
+    if detection is None:
+        print("Result: no match (human-authored)")
+        if config.score.enabled:
+            contributions = per_signal_contributions(
+                commit=commit, diff_stats=[], seconds_since_prior=None,
+                config=config.score,
+            )
+            print("Scorer breakdown (disabled or below threshold):")
+            for name, data in contributions.items():
+                print(f"  {name}: raw={data['raw']:.2f} weighted={data['weighted']:.3f}")
+        return
+    print(f"Result: AI ({detection.tool}, confidence={detection.confidence})")
+    print(f"  method: {detection.method}")
+    print(f"  source: {detection.source}")
+
+
 def cmd_uninstall_hook(args) -> None:
     try:
         uninstall_hook(Path.cwd())
@@ -342,6 +391,7 @@ COMMANDS = {
     "install-hook": cmd_install_hook,
     "uninstall-hook": cmd_uninstall_hook,
     "config": cmd_config,
+    "detect-test": cmd_detect_test,
 }
 
 
