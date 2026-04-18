@@ -6,6 +6,7 @@ import re
 import sys
 import tomllib
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 
 DEFAULT_THRESHOLD = 0.7
@@ -32,8 +33,8 @@ class RuleSpec:
 @dataclass(frozen=True)
 class WindowSpec:
     author: re.Pattern[str]
-    start: str  # ISO date YYYY-MM-DD, inclusive
-    end: str    # ISO date YYYY-MM-DD, inclusive
+    start: date  # inclusive
+    end: date    # inclusive
     tool: str
     confidence: str = "medium"
     note: str = ""
@@ -99,10 +100,15 @@ def parse_window_list(rules_raw: list, location_prefix: str) -> list[WindowSpec]
         if missing:
             _warn(f"{location}: missing required fields {missing}; skipping")
             continue
+        try:
+            start = date.fromisoformat(entry["start"])
+            end = date.fromisoformat(entry["end"])
+        except ValueError as e:
+            raise ValueError(f"invalid date at {location}: {e}") from e
         out.append(WindowSpec(
             author=_compile(entry["author"], location),
-            start=entry["start"],
-            end=entry["end"],
+            start=start,
+            end=end,
             tool=entry["tool"],
             confidence=_parse_confidence(entry, location),
             note=entry.get("note", ""),

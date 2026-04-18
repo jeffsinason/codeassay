@@ -1,4 +1,5 @@
 import re
+from datetime import date
 from pathlib import Path
 import pytest
 
@@ -64,8 +65,8 @@ tool = "claude_code"
     w = cfg.window_rules[0]
     assert isinstance(w, WindowSpec)
     assert w.author.pattern == "jeff@example.com"
-    assert w.start == "2026-01-01"
-    assert w.end == "2026-03-15"
+    assert w.start == date(2026, 1, 1)
+    assert w.end == date(2026, 3, 15)
     assert w.tool == "claude_code"
 
 
@@ -160,3 +161,16 @@ message_structured_body = 0.0
     # Should have the full default weights restored
     assert len(cfg.score.weights) == 7
     assert abs(sum(cfg.score.weights.values()) - 1.0) < 0.01
+
+
+def test_invalid_window_date_raises(tmp_path):
+    _write(tmp_path, """
+[[detect.window]]
+author = "jeff@example.com"
+start = "not-a-date"
+end = "2026-03-15"
+tool = "claude_code"
+""")
+    with pytest.raises(ValueError) as exc:
+        load_config(tmp_path)
+    assert "detect.window[0]" in str(exc.value)

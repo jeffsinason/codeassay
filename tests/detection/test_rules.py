@@ -85,7 +85,10 @@ def test_match_message_no_match():
 def _wspec(author_pat="jane@.*", start="2026-01-01", end="2026-03-15") -> WindowSpec:
     return WindowSpec(
         author=re.compile(author_pat),
-        start=start, end=end, tool="claude_code", confidence="high",
+        start=date.fromisoformat(start),
+        end=date.fromisoformat(end),
+        tool="claude_code",
+        confidence="high",
     )
 
 

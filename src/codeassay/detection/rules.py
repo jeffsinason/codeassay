@@ -9,7 +9,12 @@ from codeassay.detection.config import RuleSpec, WindowSpec
 
 
 def match_author(rule: RuleSpec, commit: dict) -> bool:
-    """Match against author email, then author name."""
+    """Match against author email, then author name.
+
+    NOTE: the ``author_email`` field is populated by Task 11's scanner
+    refactor (``%ae`` in the git-log format). Until that lands, only the
+    ``author`` (name) branch of this matcher effectively fires.
+    """
     email = commit.get("author_email", "") or ""
     name = commit.get("author", "") or ""
     return bool(rule.pattern.search(email) or rule.pattern.search(name))
@@ -36,6 +41,13 @@ def _parse_commit_date(raw: str) -> date | None:
 
 
 def match_window(rule: WindowSpec, commit: dict) -> bool:
+    """Check author+date match against a time-window rule.
+
+    Date comparison uses the commit's author-local timezone: a commit
+    timestamped ``2025-12-31T23:30:00-08:00`` registers as 2025-12-31
+    regardless of the machine running codeassay. This matches user
+    intuition about "commits from that week" better than UTC would.
+    """
     email = commit.get("author_email", "") or ""
     name = commit.get("author", "") or ""
     if not (rule.author.search(email) or rule.author.search(name)):
@@ -43,9 +55,4 @@ def match_window(rule: WindowSpec, commit: dict) -> bool:
     d = _parse_commit_date(commit.get("date", "") or "")
     if d is None:
         return False
-    try:
-        start = date.fromisoformat(rule.start)
-        end = date.fromisoformat(rule.end)
-    except ValueError:
-        return False
-    return start <= d <= end
+    return rule.start <= d <= rule.end
