@@ -1,0 +1,28 @@
+# OpenCode — https://opencode.ai  (sst/opencode)
+# Open-source Claude Code alternative by SST. By default OpenCode appends
+# this footer to every commit message and PR description:
+#   "🤖 Generated with [opencode]"
+#   "Co-Authored-By: opencode <noreply@opencode.ai>"
+# Verified via sst/opencode GitHub issues #786 and #919 (April 2026).
+# The footer is configurable via includeCoAuthoredBy; high confidence while
+# default is on.
+
+[[detect.message]]
+pattern = 'Co-[Aa]uthored-[Bb]y:.*opencode.*noreply@opencode\.ai'
+tool = "opencode"
+confidence = "high"
+
+[[detect.message]]
+pattern = 'Co-[Aa]uthored-[Bb]y:.*opencode'
+tool = "opencode"
+confidence = "high"
+
+[[detect.message]]
+pattern = 'Generated with \[opencode\]'
+tool = "opencode"
+confidence = "high"
+
+[[detect.author]]
+pattern = 'noreply@opencode\.ai'
+tool = "opencode"
+confidence = "high"

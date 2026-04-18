@@ -1,0 +1,18 @@
+# CodeBuddy — https://codebuddy.ai  (Tencent Cloud)
+# Tencent's AI code editor powered by the Yuanbao Code large model.
+# CodeBuddy CLI has an includeCoAuthoredBy setting (default: true) which
+# adds a "co-authored-by CodeBuddy" attribution to commits and PRs.
+# The exact email in the trailer was not publicly documented at the time of
+# research (April 2026); the pattern below matches the name component only.
+# TENTATIVE — field verification pending: exact trailer email unknown;
+# the pattern covers the name-based signal only.
+
+[[detect.message]]
+pattern = 'Co-[Aa]uthored-[Bb]y:.*[Cc]ode[Bb]uddy'
+tool = "codebuddy"
+confidence = "medium"
+
+[[detect.branch]]
+pattern = '^codebuddy/'
+tool = "codebuddy"
+confidence = "medium"

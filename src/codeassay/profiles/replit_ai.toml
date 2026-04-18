@@ -1,0 +1,24 @@
+# Replit AI / Replit Agent — https://replit.com/ai
+# Replit's agentic coding mode auto-commits during task execution.
+# When Replit's own identity is used (not the user's linked GitHub account),
+# the author email is no-reply@replit.com. Verified via Replit community
+# forum discussion on auto-commit author configuration (April 2026).
+# Note: If the user links their GitHub account, commits use their personal
+# identity and will NOT match these patterns.
+# CAUTION: currently no strong default signature. Add user rules in
+# .codeassay.toml if your team uses this tool.
+
+[[detect.author]]
+pattern = 'no-reply@replit\.com'
+tool = "replit_ai"
+confidence = "medium"
+
+[[detect.author]]
+pattern = '@users\.noreply\.replit\.com'
+tool = "replit_ai"
+confidence = "medium"
+
+[[detect.branch]]
+pattern = '^replit-agent/'
+tool = "replit_ai"
+confidence = "medium"

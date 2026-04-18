@@ -1,0 +1,28 @@
+# Codex CLI (OpenAI) — https://developers.openai.com/codex/cli
+# OpenAI's agentic terminal coding tool (2025+). By default Codex CLI does
+# not add commit-level attribution, but openai/codex PR #11617 landed a
+# configurable co-author trailer that defaults to
+# "Co-authored-by: Codex <noreply@openai.com>".
+# A previous buggy default used codex@example.com (see openai/codex #18095);
+# that address is also captured here as a medium-confidence signal since it
+# indicates Codex CLI was in use even though it was a misconfiguration.
+
+[[detect.message]]
+pattern = 'Co-[Aa]uthored-[Bb]y:.*Codex.*noreply@openai\.com'
+tool = "codex_cli"
+confidence = "high"
+
+[[detect.message]]
+pattern = 'Co-[Aa]uthored-[Bb]y:.*Codex.*@openai\.com'
+tool = "codex_cli"
+confidence = "high"
+
+[[detect.author]]
+pattern = 'codex@example\.com'
+tool = "codex_cli"
+confidence = "medium"
+
+[[detect.author]]
+pattern = 'noreply@openai\.com'
+tool = "codex_cli"
+confidence = "medium"
