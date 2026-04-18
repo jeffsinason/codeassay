@@ -143,3 +143,20 @@ key = "value"
     cfg = load_config(tmp_path)
     captured = capsys.readouterr()
     assert "unknown" in captured.err.lower()
+
+
+def test_score_weights_zero_sum_falls_back_to_defaults(tmp_path, capsys):
+    _write(tmp_path, """
+[score]
+enabled = true
+
+[score.weights]
+diff_wholesale_rewrite = 0.0
+message_structured_body = 0.0
+""")
+    cfg = load_config(tmp_path)
+    captured = capsys.readouterr()
+    assert "fall" in captured.err.lower() or "default" in captured.err.lower()
+    # Should have the full default weights restored
+    assert len(cfg.score.weights) == 7
+    assert abs(sum(cfg.score.weights.values()) - 1.0) < 0.01

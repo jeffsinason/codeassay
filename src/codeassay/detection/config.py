@@ -24,14 +24,14 @@ KNOWN_TOP_LEVEL_KEYS = {"profiles", "detect", "score"}
 
 @dataclass(frozen=True)
 class RuleSpec:
-    pattern: re.Pattern
+    pattern: re.Pattern[str]
     tool: str
     confidence: str = "medium"
 
 
 @dataclass(frozen=True)
 class WindowSpec:
-    author: re.Pattern
+    author: re.Pattern[str]
     start: str  # ISO date YYYY-MM-DD, inclusive
     end: str    # ISO date YYYY-MM-DD, inclusive
     tool: str
@@ -43,7 +43,7 @@ class WindowSpec:
 class ScoreConfig:
     enabled: bool = False
     threshold: float = DEFAULT_THRESHOLD
-    weights: dict = field(default_factory=lambda: dict(DEFAULT_WEIGHTS))
+    weights: dict[str, float] = field(default_factory=lambda: dict(DEFAULT_WEIGHTS))
 
 
 @dataclass
@@ -60,7 +60,7 @@ def _warn(msg: str) -> None:
     print(f"codeassay: warning: {msg}", file=sys.stderr)
 
 
-def _compile(pattern: str, location: str) -> re.Pattern:
+def _compile(pattern: str, location: str) -> re.Pattern[str]:
     try:
         return re.compile(pattern)
     except re.error as e:
@@ -75,10 +75,10 @@ def _parse_confidence(raw: dict, location: str) -> str:
     return c
 
 
-def _parse_rule_list(rules_raw: list, category: str) -> list[RuleSpec]:
+def parse_rule_list(rules_raw: list, location_prefix: str) -> list[RuleSpec]:
     out = []
     for i, entry in enumerate(rules_raw):
-        location = f"detect.{category}[{i}]"
+        location = f"{location_prefix}[{i}]"
         if "pattern" not in entry or "tool" not in entry:
             _warn(f"{location}: missing required field (pattern or tool); skipping")
             continue
@@ -90,10 +90,10 @@ def _parse_rule_list(rules_raw: list, category: str) -> list[RuleSpec]:
     return out
 
 
-def _parse_window_list(rules_raw: list) -> list[WindowSpec]:
+def parse_window_list(rules_raw: list, location_prefix: str) -> list[WindowSpec]:
     out = []
     for i, entry in enumerate(rules_raw):
-        location = f"detect.window[{i}]"
+        location = f"{location_prefix}[{i}]"
         required = ("author", "start", "end", "tool")
         missing = [k for k in required if k not in entry]
         if missing:
@@ -116,10 +116,15 @@ def _parse_score(score_raw: dict) -> ScoreConfig:
     if user_weights:
         weights = dict(user_weights)
         total = sum(weights.values())
-        if not (0.99 <= total <= 1.01):
+        if total <= 0:
+            _warn(
+                f"score.weights sum to {total:.3f}; cannot normalize. "
+                "Falling back to defaults."
+            )
+            weights = dict(DEFAULT_WEIGHTS)
+        elif not (0.99 <= total <= 1.01):
             _warn(f"score.weights sum to {total:.3f}, not ~1.0; normalizing")
-            if total > 0:
-                weights = {k: v / total for k, v in weights.items()}
+            weights = {k: v / total for k, v in weights.items()}
     return ScoreConfig(
         enabled=bool(score_raw.get("enabled", False)),
         threshold=float(score_raw.get("threshold", DEFAULT_THRESHOLD)),
@@ -150,10 +155,10 @@ def load_config(repo_path: Path) -> DetectionConfig:
 
     detect = raw.get("detect", {})
     return DetectionConfig(
-        author_rules=_parse_rule_list(detect.get("author", []), "author"),
-        branch_rules=_parse_rule_list(detect.get("branch", []), "branch"),
-        message_rules=_parse_rule_list(detect.get("message", []), "message"),
-        window_rules=_parse_window_list(detect.get("window", [])),
+        author_rules=parse_rule_list(detect.get("author", []), "detect.author"),
+        branch_rules=parse_rule_list(detect.get("branch", []), "detect.branch"),
+        message_rules=parse_rule_list(detect.get("message", []), "detect.message"),
+        window_rules=parse_window_list(detect.get("window", []), "detect.window"),
         disabled_profiles=_parse_disabled_profiles(raw.get("profiles", {})),
         score=_parse_score(raw.get("score", {})),
     )
