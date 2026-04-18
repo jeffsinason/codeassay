@@ -244,12 +244,20 @@ def cmd_tag(args) -> None:
 
 
 def cmd_install_hook(args) -> None:
-    install_hook(Path.cwd(), tool=args.tool, mode=args.mode, force=args.force)
+    try:
+        install_hook(Path.cwd(), tool=args.tool, mode=args.mode, force=args.force)
+    except (ValueError, RuntimeError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        sys.exit(2)
     print(f"Installed prepare-commit-msg hook (tool={args.tool}, mode={args.mode})")
 
 
 def cmd_uninstall_hook(args) -> None:
-    uninstall_hook(Path.cwd())
+    try:
+        uninstall_hook(Path.cwd())
+    except RuntimeError as e:
+        print(f"error: {e}", file=sys.stderr)
+        sys.exit(2)
     print("Uninstalled prepare-commit-msg hook (if present)")
 
 

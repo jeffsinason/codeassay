@@ -126,3 +126,23 @@ def test_uninstall_hook_refuses_modified(tmp_path):
 def test_uninstall_hook_noop_when_absent(tmp_path):
     repo = _init_plain_repo(tmp_path)
     uninstall_hook(repo)  # should not raise
+
+
+def test_install_hook_rejects_shell_injection_in_tool(tmp_path):
+    repo = _init_plain_repo(tmp_path)
+    malicious = 'x"; rm -rf "$HOME'
+    with pytest.raises(ValueError, match="invalid tool name"):
+        install_hook(repo, tool=malicious, mode="always")
+
+
+def test_install_hook_rejects_empty_tool(tmp_path):
+    repo = _init_plain_repo(tmp_path)
+    with pytest.raises(ValueError, match="invalid tool name"):
+        install_hook(repo, tool="", mode="always")
+
+
+def test_install_hook_accepts_standard_tool_names(tmp_path):
+    repo = _init_plain_repo(tmp_path)
+    # All seven profile names should pass.
+    for name in ("claude_code", "copilot", "cursor", "aider", "windsurf", "gpt", "gemini"):
+        install_hook(repo, tool=name, mode="always", force=True)

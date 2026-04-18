@@ -13,6 +13,19 @@ _CO_AUTHOR_AI = re.compile(
     re.IGNORECASE,
 )
 
+_TOOL_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_.:+-]{1,64}$")
+
+
+def _validate_tool_name(tool: str) -> None:
+    """Ensure `tool` is safe to interpolate into a shell hook template.
+
+    Permitted: alphanumeric plus [._:+-], 1-64 chars.
+    """
+    if not _TOOL_NAME_PATTERN.match(tool):
+        raise ValueError(
+            f"invalid tool name {tool!r}: must match {_TOOL_NAME_PATTERN.pattern}"
+        )
+
 
 def already_tagged(message: str) -> bool:
     """True if an AI-Assisted or Co-Authored-By AI-tool trailer is present."""
@@ -85,6 +98,7 @@ def _hook_path(repo_path: Path) -> Path:
 def install_hook(
     repo_path: Path, *, tool: str = "unknown", mode: str = "always", force: bool = False,
 ) -> None:
+    _validate_tool_name(tool)
     hook = _hook_path(repo_path)
     if hook.exists() and not force:
         if HOOK_MARKER not in hook.read_text():
