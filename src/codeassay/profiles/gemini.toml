@@ -1,0 +1,6 @@
+# Gemini CLI / Gemini Code
+
+[[detect.message]]
+pattern = 'Co-Authored-By:.*Gemini'
+tool = "gemini"
+confidence = "high"

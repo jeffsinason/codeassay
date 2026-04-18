@@ -1,0 +1,11 @@
+# GitHub Copilot — https://github.com/features/copilot
+
+[[detect.message]]
+pattern = 'Co-Authored-By:.*Copilot'
+tool = "copilot"
+confidence = "high"
+
+[[detect.author]]
+pattern = 'copilot@github\.com'
+tool = "copilot"
+confidence = "high"

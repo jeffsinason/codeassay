@@ -1,0 +1,12 @@
+# Aider — https://aider.chat
+# Placeholder patterns — verify against real aider-authored commits before v1 release.
+
+[[detect.message]]
+pattern = '^aider: '
+tool = "aider"
+confidence = "high"
+
+[[detect.message]]
+pattern = '# Aider'
+tool = "aider"
+confidence = "high"

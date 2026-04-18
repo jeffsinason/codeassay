@@ -1,0 +1,17 @@
+# Windsurf / Codeium — https://codeium.com/windsurf
+# Placeholder patterns — verify against real windsurf-authored commits before v1 release.
+
+[[detect.author]]
+pattern = '@codeium\.com'
+tool = "windsurf"
+confidence = "medium"
+
+[[detect.author]]
+pattern = '^windsurf-'
+tool = "windsurf"
+confidence = "medium"
+
+[[detect.message]]
+pattern = 'Windsurf AI'
+tool = "windsurf"
+confidence = "high"
