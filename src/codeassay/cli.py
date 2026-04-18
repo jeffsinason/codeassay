@@ -104,6 +104,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     uninst_p = sub.add_parser("uninstall-hook", help="Remove codeassay-managed hook")
 
+    config_p = sub.add_parser("config", help="Manage .codeassay.toml")
+    config_sub = config_p.add_subparsers(dest="config_action")
+    config_init_p = config_sub.add_parser("init", help="Write starter .codeassay.toml")
+    config_init_p.add_argument("--force", action="store_true")
+    config_show_p = config_sub.add_parser("show", help="Print merged effective config")
+
     return parser
 
 
@@ -252,6 +258,40 @@ def cmd_install_hook(args) -> None:
     print(f"Installed prepare-commit-msg hook (tool={args.tool}, mode={args.mode})")
 
 
+def cmd_config(args) -> None:
+    if args.config_action == "init":
+        _config_init(Path.cwd(), force=args.force)
+    elif args.config_action == "show":
+        _config_show(Path.cwd())
+    else:
+        print("Usage: codeassay config {init,show}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _config_init(repo_path: Path, *, force: bool) -> None:
+    from codeassay.detection.config_init import STARTER_TEMPLATE
+    cfg = repo_path / ".codeassay.toml"
+    if cfg.exists() and not force:
+        print(f"{cfg} exists (use --force to overwrite)", file=sys.stderr)
+        sys.exit(1)
+    cfg.write_text(STARTER_TEMPLATE)
+    print(f"Wrote {cfg}")
+
+
+def _config_show(repo_path: Path) -> None:
+    from codeassay.detection.config import load_config
+    from codeassay.detection.profiles import load_profiles
+    cfg = load_config(repo_path)
+    profiles = load_profiles(disabled=cfg.disabled_profiles)
+    print("User rules:")
+    for cat in ("author_rules", "branch_rules", "message_rules", "window_rules"):
+        rules = getattr(cfg, cat)
+        print(f"  {cat}: {len(rules)}")
+    print(f"Disabled profiles: {sorted(cfg.disabled_profiles) or '(none)'}")
+    print(f"Enabled profiles: {[p.name for p in profiles]}")
+    print(f"Scorer enabled: {cfg.score.enabled} (threshold={cfg.score.threshold})")
+
+
 def cmd_uninstall_hook(args) -> None:
     try:
         uninstall_hook(Path.cwd())
@@ -301,6 +341,7 @@ COMMANDS = {
     "tag": cmd_tag,
     "install-hook": cmd_install_hook,
     "uninstall-hook": cmd_uninstall_hook,
+    "config": cmd_config,
 }
 
 
