@@ -1,6 +1,18 @@
 """Configurable AI commit detection pipeline."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from codeassay.detection.rules import (
+    match_author, match_branch, match_message, match_window,
+)
+from codeassay.detection.scorer import score_commit
+
+if TYPE_CHECKING:
+    from codeassay.detection.config import DetectionConfig
+    from codeassay.detection.profiles import Profile
 
 
 @dataclass(frozen=True)
@@ -21,4 +33,95 @@ class Detection:
     source: str
 
 
-__all__ = ["Detection"]
+def _check_rule_bundle(
+    *, commit, branches, author_rules, branch_rules, message_rules, window_rules,
+):
+    """Walk categories in fixed order. Return (category, index, rule) or None."""
+    for i, rule in enumerate(author_rules):
+        if match_author(rule, commit):
+            return ("author", i, rule)
+    for i, rule in enumerate(branch_rules):
+        if match_branch(rule, commit, branches=branches):
+            return ("branch", i, rule)
+    for i, rule in enumerate(message_rules):
+        if match_message(rule, commit):
+            return ("message", i, rule)
+    for i, rule in enumerate(window_rules):
+        if match_window(rule, commit):
+            return ("window", i, rule)
+    return None
+
+
+def classify(
+    commit: dict,
+    *,
+    config: "DetectionConfig",
+    profiles: list,
+    diff_stats: list | None = None,
+    seconds_since_prior: int | None = None,
+) -> Detection | None:
+    """Run detection pipeline. Returns Detection if AI, None if human.
+
+    Evaluation order:
+    1. User rules (author -> branch -> message -> window), first match wins.
+    2. Enabled profiles (caller supplies them in alphabetic order), each
+       evaluated in the same category order. First matching profile wins.
+    3. Probabilistic scorer (if config.score.enabled and score >= threshold).
+    """
+    branches = set(commit.get("branches", set()) or set())
+
+    # 1. User rules
+    hit = _check_rule_bundle(
+        commit=commit, branches=branches,
+        author_rules=config.author_rules,
+        branch_rules=config.branch_rules,
+        message_rules=config.message_rules,
+        window_rules=config.window_rules,
+    )
+    if hit:
+        cat, idx, rule = hit
+        return Detection(
+            tool=rule.tool,
+            confidence=rule.confidence,
+            method="rule",
+            source=f"user:detect.{cat}[{idx}]",
+        )
+
+    # 2. Profiles
+    for profile in profiles:
+        hit = _check_rule_bundle(
+            commit=commit, branches=branches,
+            author_rules=profile.author_rules,
+            branch_rules=profile.branch_rules,
+            message_rules=profile.message_rules,
+            window_rules=profile.window_rules,
+        )
+        if hit:
+            _cat, _idx, rule = hit
+            return Detection(
+                tool=rule.tool,
+                confidence=rule.confidence,
+                method="profile",
+                source=f"profile:{profile.name}",
+            )
+
+    # 3. Scorer
+    if config.score.enabled:
+        s = score_commit(
+            commit=commit,
+            diff_stats=diff_stats or [],
+            seconds_since_prior=seconds_since_prior,
+            config=config.score,
+        )
+        if s >= config.score.threshold:
+            return Detection(
+                tool="unknown",
+                confidence="low",
+                method="score",
+                source=f"score:{s:.2f}",
+            )
+
+    return None
+
+
+__all__ = ["Detection", "classify"]
