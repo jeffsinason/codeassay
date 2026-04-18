@@ -27,7 +27,7 @@ def test_classify_user_author_rule_wins():
     cfg = DetectionConfig(author_rules=[_rule("jane@", tool="cursor", conf="high")])
     d = classify(_commit(), config=cfg, profiles=[])
     assert d == Detection(tool="cursor", confidence="high", method="rule",
-                          source="user:detect.author[0]")
+                          source="user:detect.author[0]", detection_confidence=90)
 
 
 def test_classify_user_rules_before_profiles():
@@ -42,7 +42,8 @@ def test_classify_profile_when_no_user_rule():
     profile = Profile(name="aider", message_rules=[_rule("^aider:", tool="aider", conf="high")])
     cfg = DetectionConfig()
     d = classify(_commit(message="aider: refactor"), config=cfg, profiles=[profile])
-    assert d == Detection(tool="aider", confidence="high", method="profile", source="profile:aider")
+    assert d == Detection(tool="aider", confidence="high", method="profile", source="profile:aider",
+                          detection_confidence=90)
 
 
 def test_classify_profile_alphabetic_order():
@@ -90,3 +91,15 @@ def test_classify_category_order_author_before_branch():
     )
     d = classify(_commit(branches={"main"}), config=cfg, profiles=[])
     assert d.tool == "from_author"
+
+
+def test_classify_scorer_produces_numeric_confidence():
+    cfg = DetectionConfig(score=ScoreConfig(enabled=True, threshold=0.1))
+    d = classify(_commit(message="feat: add thing 🤖"), config=cfg, profiles=[],
+                 diff_stats=[], seconds_since_prior=None)
+    assert d is not None
+    assert 0 <= d.detection_confidence <= 100
+    # Scorer's numeric confidence should roughly match the score value ×100
+    # (source is "score:0.XX"); extract and compare within a small tolerance.
+    raw = float(d.source.split(":")[1])
+    assert abs(d.detection_confidence - int(round(raw * 100))) <= 1

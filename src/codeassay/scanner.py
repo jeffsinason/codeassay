@@ -204,6 +204,7 @@ def scan_repo(
             confidence=detection.confidence,
             files_changed=files,
             source=detection.source,
+            detection_confidence=detection.detection_confidence,
         )
 
     if commits and not dry_run:

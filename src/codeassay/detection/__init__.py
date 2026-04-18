@@ -25,12 +25,23 @@ class Detection:
         method: Coarse bucket — "rule", "profile", or "score".
         source: Fine-grained pointer — e.g. "user:detect.author[0]",
                 "profile:cursor", "score:0.82".
+        detection_confidence: Numeric confidence 0–100. Rule/profile matches
+            backfill from the text value (high=90, medium=60, low=30); scorer
+            matches use the real score rounded to an integer.
     """
 
     tool: str
     confidence: str
     method: str
     source: str
+    detection_confidence: int
+
+
+_CONFIDENCE_NUMERIC = {"high": 90, "medium": 60, "low": 30}
+
+
+def _confidence_to_numeric(text: str) -> int:
+    return _CONFIDENCE_NUMERIC.get(text, 30)
 
 
 def _check_rule_bundle(
@@ -85,6 +96,7 @@ def classify(
             confidence=rule.confidence,
             method="rule",
             source=f"user:detect.{cat}[{idx}]",
+            detection_confidence=_confidence_to_numeric(rule.confidence),
         )
 
     # 2. Profiles
@@ -103,6 +115,7 @@ def classify(
                 confidence=rule.confidence,
                 method="profile",
                 source=f"profile:{profile.name}",
+                detection_confidence=_confidence_to_numeric(rule.confidence),
             )
 
     # 3. Scorer
@@ -119,6 +132,7 @@ def classify(
                 confidence="low",
                 method="score",
                 source=f"score:{s:.2f}",
+                detection_confidence=int(round(s * 100)),
             )
 
     return None
