@@ -146,22 +146,25 @@ def _seconds_between(commit_later: dict, commit_earlier: dict | None) -> int | N
 
 # ---- Scan orchestration ----
 
-def scan_repo(repo_path: Path, conn, branch: str | None = None) -> dict:
+def scan_repo(
+    repo_path: Path, conn, branch: str | None = None,
+    *, dry_run: bool = False, force_scorer: bool = False,
+) -> dict:
     repo_path = Path(repo_path).resolve()
     repo_str = str(repo_path)
     ignore_patterns = load_ignore_patterns(repo_path)
     config = load_config(repo_path)
+    if force_scorer:
+        config.score.enabled = True
     profiles = load_profiles(disabled=config.disabled_profiles)
 
-    last_commit = get_last_scanned_commit(conn, repo_str)
+    last_commit = get_last_scanned_commit(conn, repo_str) if not dry_run else None
     commits = parse_commit_log(repo_path, since_commit=last_commit)
     ai_count = 0
 
     needs_branches = bool(config.branch_rules) or any(p.branch_rules for p in profiles)
     scorer_on = config.score.enabled
 
-    # parse_commit_log returns newest-first. For seconds_since_prior we want
-    # chronological order.
     chronological = list(reversed(commits))
     prior = None
     for commit in chronological:
@@ -182,7 +185,13 @@ def scan_repo(repo_path: Path, conn, branch: str | None = None) -> dict:
         files = filter_files_csv(files, ignore_patterns)
         if not files:
             continue
-
+        ai_count += 1
+        if dry_run:
+            print(
+                f"would store: {commit['hash'][:8]} tool={detection.tool} "
+                f"source={detection.source}"
+            )
+            continue
         insert_ai_commit(
             conn,
             commit_hash=commit["hash"],
@@ -196,8 +205,7 @@ def scan_repo(repo_path: Path, conn, branch: str | None = None) -> dict:
             files_changed=files,
             source=detection.source,
         )
-        ai_count += 1
 
-    if commits:
+    if commits and not dry_run:
         set_last_scanned_commit(conn, repo_str, commits[0]["hash"])
     return {"total_commits": len(commits), "ai_commits": ai_count}

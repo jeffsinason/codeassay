@@ -65,6 +65,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     scan_p = sub.add_parser("scan", help="Scan repos for AI commits and rework")
     scan_p.add_argument("repos", nargs="+", help="Paths to git repos to scan")
+    scan_p.add_argument("--with-scorer", action="store_true",
+                        help="Force-enable probabilistic scorer for this scan")
+    scan_p.add_argument("--dry-run", action="store_true",
+                        help="Report matches without writing to DB")
 
     report_p = sub.add_parser("report", help="Generate quality report")
     report_p.add_argument("--format", choices=["cli", "markdown"], default="cli")
@@ -80,11 +84,13 @@ def build_parser() -> argparse.ArgumentParser:
     commits_p.add_argument("--tool", help="Filter by AI tool")
     commits_p.add_argument("--since", help="Start date")
     commits_p.add_argument("--until", help="End date")
+    commits_p.add_argument("--source", help="Filter by detection source glob (e.g. 'profile:*')")
 
     rework_p = sub.add_parser("rework", help="List rework events")
     rework_p.add_argument("--since", help="Start date")
     rework_p.add_argument("--until", help="End date")
     rework_p.add_argument("--category", help="Filter by category")
+    rework_p.add_argument("--source", help="Filter rework's original-commit source by glob")
 
     reclass_p = sub.add_parser("reclassify", help="Override rework classification")
     reclass_p.add_argument("commit", help="Rework commit hash")
@@ -126,18 +132,20 @@ def cmd_scan(args) -> None:
         if not (repo_path / ".git").exists():
             print(f"Skipping {repo_str}: not a git repository", file=sys.stderr)
             continue
-
         db_path = get_db_path(repo_path)
         init_db(db_path)
         _ensure_gitignore(repo_path)
         conn = get_connection(db_path)
-
-        scan_result = scan_repo(repo_path, conn)
-        rework_result = detect_rework(repo_path, conn)
-
+        scan_result = scan_repo(
+            repo_path, conn,
+            dry_run=args.dry_run,
+            force_scorer=args.with_scorer,
+        )
+        rework_result = {"rework_events": 0} if args.dry_run else detect_rework(repo_path, conn)
         name = _get_repo_name(repo_path)
+        suffix = " (dry-run)" if args.dry_run else ""
         print(
-            f"Scanned {name}: "
+            f"Scanned {name}{suffix}: "
             f"{scan_result['total_commits']} commits, "
             f"{scan_result['ai_commits']} AI commits, "
             f"{rework_result['rework_events']} rework events"
@@ -179,44 +187,50 @@ def cmd_report(args) -> None:
 
 
 def cmd_commits(args) -> None:
+    import fnmatch
     repo_path = Path.cwd().resolve()
     db_path = get_db_path(repo_path)
     if not db_path.exists():
         print("No scan data found. Run 'codeassay scan .' first.", file=sys.stderr)
         sys.exit(1)
-
     conn = get_connection(db_path)
     commits = get_ai_commits(conn, repo_path=str(repo_path))
-
     if args.tool:
         commits = [c for c in commits if c["tool"] == args.tool]
-
+    if args.source:
+        commits = [
+            c for c in commits
+            if c.get("source") and fnmatch.fnmatch(c["source"], args.source)
+        ]
     for c in commits:
         tool_tag = f"[{c['tool']}]"
         print(f"{c['commit_hash'][:8]} {c['date'][:10]} {tool_tag:16s} {c['message'][:60]}")
-
     conn.close()
 
 
 def cmd_rework(args) -> None:
+    import fnmatch
     repo_path = Path.cwd().resolve()
     db_path = get_db_path(repo_path)
     if not db_path.exists():
         print("No scan data found. Run 'codeassay scan .' first.", file=sys.stderr)
         sys.exit(1)
-
     conn = get_connection(db_path)
     events = get_rework_events(conn, repo_path=str(repo_path))
-
     if args.category:
         events = [e for e in events if e["category"] == args.category]
-
+    if args.source:
+        ai_commits = {c["commit_hash"]: c.get("source") for c in get_ai_commits(conn, repo_path=str(repo_path))}
+        events = [
+            e for e in events
+            if ai_commits.get(e["original_commit"])
+            and fnmatch.fnmatch(ai_commits[e["original_commit"]], args.source)
+        ]
     for e in events:
         print(
             f"{e['rework_commit'][:8]} -> {e['original_commit'][:8]} "
             f"[{e['category']:24s}] {e['confidence']:6s} {e['files_affected']}"
         )
-
     conn.close()
 
 
