@@ -16,6 +16,7 @@ from codeassay.metrics import compute_metrics, compute_trend_data
 from codeassay.reporting import format_cli_report, format_markdown_report
 from codeassay.rework import detect_rework
 from codeassay.scanner import scan_repo
+from codeassay.tag import add_trailer_to_message_file, amend_head_with_trailer
 
 
 def get_db_path(repo_path: Path) -> Path:
@@ -88,6 +89,10 @@ def build_parser() -> argparse.ArgumentParser:
     dash_p = sub.add_parser("dashboard", help="Open interactive HTML dashboard")
     dash_p.add_argument("--output", help="Output file path (default: .codeassay/dashboard.html)")
     dash_p.add_argument("--no-open", action="store_true", help="Don't open browser automatically")
+
+    tag_p = sub.add_parser("tag", help="Add AI-Assisted trailer to a commit message")
+    tag_p.add_argument("--tool", default="unknown", help="AI tool name (default: unknown)")
+    tag_p.add_argument("message_file", nargs="?", help="Hook-mode: path to commit message file")
 
     return parser
 
@@ -221,6 +226,13 @@ def cmd_export(args) -> None:
     conn.close()
 
 
+def cmd_tag(args) -> None:
+    if args.message_file:
+        add_trailer_to_message_file(Path(args.message_file), tool=args.tool)
+    else:
+        amend_head_with_trailer(tool=args.tool, cwd=Path.cwd())
+
+
 def cmd_dashboard(args) -> None:
     """Generate and open an interactive HTML dashboard."""
     import webbrowser
@@ -258,6 +270,7 @@ COMMANDS = {
     "reclassify": cmd_reclassify,
     "export": cmd_export,
     "dashboard": cmd_dashboard,
+    "tag": cmd_tag,
 }
 
 
