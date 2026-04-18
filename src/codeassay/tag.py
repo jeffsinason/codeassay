@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -50,3 +51,61 @@ def amend_head_with_trailer(*, tool: str, cwd: Path | None = None) -> None:
         ["git", "commit", "--amend", "-m", new_message.rstrip("\n")],
         cwd=cwd, check=True,
     )
+
+
+HOOK_MARKER = "# managed-by-codeassay"
+
+_HOOK_TEMPLATE_ALWAYS = """#!/bin/sh
+{marker}
+# prepare-commit-msg hook installed by codeassay.
+# Mode: always. Adds AI-Assisted trailer unconditionally (idempotent).
+# To uninstall: codeassay uninstall-hook
+codeassay tag --tool {tool} "$1"
+"""
+
+_HOOK_TEMPLATE_PROMPT = """#!/bin/sh
+{marker}
+# prepare-commit-msg hook installed by codeassay.
+# Mode: prompt. Asks whether to add AI-Assisted trailer.
+# To uninstall: codeassay uninstall-hook
+if [ -t 1 ]; then
+    printf "Add AI-Assisted: {tool} trailer? [y/N] " >&2
+    read answer < /dev/tty
+    case "$answer" in
+        y|Y|yes|YES) codeassay tag --tool {tool} "$1" ;;
+    esac
+fi
+"""
+
+
+def _hook_path(repo_path: Path) -> Path:
+    return Path(repo_path) / ".git" / "hooks" / "prepare-commit-msg"
+
+
+def install_hook(
+    repo_path: Path, *, tool: str = "unknown", mode: str = "always", force: bool = False,
+) -> None:
+    hook = _hook_path(repo_path)
+    if hook.exists() and not force:
+        if HOOK_MARKER not in hook.read_text():
+            raise RuntimeError(
+                f"{hook} already exists and was not installed by codeassay. "
+                "Use --force to overwrite."
+            )
+    template = _HOOK_TEMPLATE_ALWAYS if mode == "always" else _HOOK_TEMPLATE_PROMPT
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_text(template.format(marker=HOOK_MARKER, tool=tool))
+    current_mode = os.stat(hook).st_mode
+    os.chmod(hook, current_mode | 0o111)
+
+
+def uninstall_hook(repo_path: Path) -> None:
+    hook = _hook_path(repo_path)
+    if not hook.exists():
+        return
+    if HOOK_MARKER not in hook.read_text():
+        raise RuntimeError(
+            f"{hook} was modified manually; refusing to delete. "
+            "Remove it yourself if you're sure."
+        )
+    hook.unlink()

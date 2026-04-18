@@ -16,7 +16,10 @@ from codeassay.metrics import compute_metrics, compute_trend_data
 from codeassay.reporting import format_cli_report, format_markdown_report
 from codeassay.rework import detect_rework
 from codeassay.scanner import scan_repo
-from codeassay.tag import add_trailer_to_message_file, amend_head_with_trailer
+from codeassay.tag import (
+    add_trailer_to_message_file, amend_head_with_trailer,
+    install_hook, uninstall_hook,
+)
 
 
 def get_db_path(repo_path: Path) -> Path:
@@ -93,6 +96,13 @@ def build_parser() -> argparse.ArgumentParser:
     tag_p = sub.add_parser("tag", help="Add AI-Assisted trailer to a commit message")
     tag_p.add_argument("--tool", default="unknown", help="AI tool name (default: unknown)")
     tag_p.add_argument("message_file", nargs="?", help="Hook-mode: path to commit message file")
+
+    hook_p = sub.add_parser("install-hook", help="Install prepare-commit-msg hook")
+    hook_p.add_argument("--tool", default="unknown")
+    hook_p.add_argument("--mode", choices=["always", "prompt"], default="always")
+    hook_p.add_argument("--force", action="store_true", help="Overwrite existing hook")
+
+    uninst_p = sub.add_parser("uninstall-hook", help="Remove codeassay-managed hook")
 
     return parser
 
@@ -233,6 +243,16 @@ def cmd_tag(args) -> None:
         amend_head_with_trailer(tool=args.tool, cwd=Path.cwd())
 
 
+def cmd_install_hook(args) -> None:
+    install_hook(Path.cwd(), tool=args.tool, mode=args.mode, force=args.force)
+    print(f"Installed prepare-commit-msg hook (tool={args.tool}, mode={args.mode})")
+
+
+def cmd_uninstall_hook(args) -> None:
+    uninstall_hook(Path.cwd())
+    print("Uninstalled prepare-commit-msg hook (if present)")
+
+
 def cmd_dashboard(args) -> None:
     """Generate and open an interactive HTML dashboard."""
     import webbrowser
@@ -271,6 +291,8 @@ COMMANDS = {
     "export": cmd_export,
     "dashboard": cmd_dashboard,
     "tag": cmd_tag,
+    "install-hook": cmd_install_hook,
+    "uninstall-hook": cmd_uninstall_hook,
 }
 
 

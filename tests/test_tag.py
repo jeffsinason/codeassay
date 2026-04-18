@@ -63,3 +63,66 @@ def test_cli_tag_amend(tmp_repo):
         cwd=tmp_repo, capture_output=True, text=True,
     ).stdout
     assert "AI-Assisted: cursor" in log
+
+
+from codeassay.tag import install_hook, uninstall_hook, HOOK_MARKER
+
+
+def _init_plain_repo(tmp_path):
+    repo = tmp_path / "r"
+    repo.mkdir()
+    subprocess.run(["git", "init", "--template=/dev/null"], cwd=repo, capture_output=True)
+    return repo
+
+
+def test_install_hook_writes_hook_with_marker(tmp_path):
+    repo = _init_plain_repo(tmp_path)
+    install_hook(repo, tool="cursor", mode="always")
+    hook = repo / ".git" / "hooks" / "prepare-commit-msg"
+    assert hook.exists()
+    content = hook.read_text()
+    assert HOOK_MARKER in content
+    assert "cursor" in content
+    import os
+    assert os.access(hook, os.X_OK)
+
+
+def test_install_hook_fails_if_existing_unmanaged(tmp_path):
+    repo = _init_plain_repo(tmp_path)
+    hook = repo / ".git" / "hooks" / "prepare-commit-msg"
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_text("#!/bin/sh\n# handmade hook\n")
+    with pytest.raises(RuntimeError, match="already exists"):
+        install_hook(repo, tool="cursor", mode="always")
+
+
+def test_install_hook_force_overwrites(tmp_path):
+    repo = _init_plain_repo(tmp_path)
+    hook = repo / ".git" / "hooks" / "prepare-commit-msg"
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_text("#!/bin/sh\n# handmade\n")
+    install_hook(repo, tool="cursor", mode="always", force=True)
+    assert HOOK_MARKER in hook.read_text()
+
+
+def test_uninstall_hook_removes_managed(tmp_path):
+    repo = _init_plain_repo(tmp_path)
+    install_hook(repo, tool="cursor", mode="always")
+    uninstall_hook(repo)
+    hook = repo / ".git" / "hooks" / "prepare-commit-msg"
+    assert not hook.exists()
+
+
+def test_uninstall_hook_refuses_modified(tmp_path):
+    repo = _init_plain_repo(tmp_path)
+    install_hook(repo, tool="cursor", mode="always")
+    hook = repo / ".git" / "hooks" / "prepare-commit-msg"
+    # Remove the marker to simulate hand editing
+    hook.write_text("#!/bin/sh\necho hi\n")
+    with pytest.raises(RuntimeError, match="modified"):
+        uninstall_hook(repo)
+
+
+def test_uninstall_hook_noop_when_absent(tmp_path):
+    repo = _init_plain_repo(tmp_path)
+    uninstall_hook(repo)  # should not raise
