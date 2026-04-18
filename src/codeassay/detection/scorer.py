@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from codeassay.detection.config import ScoreConfig
 
 EMOJI_SET = {"🤖", "✨", "🚀", "♻️"}
 BOILERPLATE_HEADERS = ("Summary:", "Changes:", "Test plan:", "## Summary", "## Test plan")
@@ -101,16 +105,14 @@ def signal_perfect_punctuation(message: str) -> float:
     return _clamp(score)
 
 
-def score_commit(
-    *,
+def _raw_signals(
     commit: dict,
     diff_stats: list[dict],
     seconds_since_prior: int | None,
-    config,  # ScoreConfig
-) -> float:
-    """Return a 0-1 score combining all signals weighted per config."""
+) -> dict[str, float]:
+    """Compute the 7 raw (unweighted) signal values for a commit."""
     msg = commit.get("message", "") or ""
-    signals = {
+    return {
         "diff_wholesale_rewrite": signal_diff_wholesale_rewrite(diff_stats),
         "message_structured_body": signal_message_structured_body(msg),
         "commit_velocity": signal_commit_velocity(seconds_since_prior),
@@ -119,10 +121,18 @@ def score_commit(
         "file_diversity": signal_file_diversity(diff_stats),
         "perfect_punctuation": signal_perfect_punctuation(msg),
     }
-    total = 0.0
-    for name, value in signals.items():
-        weight = config.weights.get(name, 0.0)
-        total += value * weight
+
+
+def score_commit(
+    *,
+    commit: dict,
+    diff_stats: list[dict],
+    seconds_since_prior: int | None,
+    config: "ScoreConfig",
+) -> float:
+    """Return a 0-1 score combining all signals weighted per config."""
+    signals = _raw_signals(commit, diff_stats, seconds_since_prior)
+    total = sum(value * config.weights.get(name, 0.0) for name, value in signals.items())
     return _clamp(total)
 
 
@@ -131,19 +141,14 @@ def per_signal_contributions(
     commit: dict,
     diff_stats: list[dict],
     seconds_since_prior: int | None,
-    config,
-) -> dict:
-    """Return a dict of signal -> {'raw': float, 'weighted': float} for auditing."""
-    msg = commit.get("message", "") or ""
-    raw = {
-        "diff_wholesale_rewrite": signal_diff_wholesale_rewrite(diff_stats),
-        "message_structured_body": signal_message_structured_body(msg),
-        "commit_velocity": signal_commit_velocity(seconds_since_prior),
-        "emoji_indicator": signal_emoji_indicator(msg),
-        "message_boilerplate": signal_message_boilerplate(msg),
-        "file_diversity": signal_file_diversity(diff_stats),
-        "perfect_punctuation": signal_perfect_punctuation(msg),
-    }
+    config: "ScoreConfig",
+) -> dict[str, dict[str, float]]:
+    """Return a dict of signal -> {'raw': float, 'weighted': float} for auditing.
+
+    The raw values are guaranteed to match those used by score_commit on the same
+    inputs — both go through _raw_signals.
+    """
+    raw = _raw_signals(commit, diff_stats, seconds_since_prior)
     return {
         name: {"raw": value, "weighted": value * config.weights.get(name, 0.0)}
         for name, value in raw.items()

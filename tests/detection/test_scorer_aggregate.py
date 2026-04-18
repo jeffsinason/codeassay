@@ -70,3 +70,55 @@ def test_score_returns_zero_when_all_signals_zero():
         config=cfg,
     )
     assert s == 0.0
+
+
+def test_per_signal_contributions_matches_score_commit():
+    """Invariant: weighted contributions should sum (pre-clamp) to what score_commit returns,
+    as long as that sum is within [0, 1]."""
+    from codeassay.detection.scorer import per_signal_contributions
+    msg = (
+        "feat: something 🤖\n\n"
+        "Summary:\n- a\n- b\n\n"
+        "Test plan:\n- t\n"
+    )
+    diff = [
+        {"path": "a.py", "added": 10, "removed": 5, "file_size": 50},
+        {"path": "b.md", "added": 3, "removed": 0, "file_size": 10},
+    ]
+    cfg = ScoreConfig()
+    contributions = per_signal_contributions(
+        commit=_commit(message=msg),
+        diff_stats=diff,
+        seconds_since_prior=120,
+        config=cfg,
+    )
+    total_weighted = sum(c["weighted"] for c in contributions.values())
+    score = score_commit(
+        commit=_commit(message=msg),
+        diff_stats=diff,
+        seconds_since_prior=120,
+        config=cfg,
+    )
+    # Both should match (assuming the sum is in [0, 1], which it is for this commit)
+    assert 0 <= total_weighted <= 1
+    assert abs(total_weighted - score) < 1e-9
+
+
+def test_per_signal_contributions_has_all_7_signals():
+    from codeassay.detection.scorer import per_signal_contributions
+    contributions = per_signal_contributions(
+        commit=_commit(),
+        diff_stats=[],
+        seconds_since_prior=None,
+        config=ScoreConfig(),
+    )
+    expected = {
+        "diff_wholesale_rewrite", "message_structured_body", "commit_velocity",
+        "emoji_indicator", "message_boilerplate", "file_diversity", "perfect_punctuation",
+    }
+    assert set(contributions.keys()) == expected
+    # Every entry has both raw and weighted float keys
+    for data in contributions.values():
+        assert set(data.keys()) == {"raw", "weighted"}
+        assert isinstance(data["raw"], float)
+        assert isinstance(data["weighted"], float)
