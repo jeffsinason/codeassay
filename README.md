@@ -25,20 +25,37 @@ codeassay scan ../repo1 ../repo2 ../repo3
 
 | Command | Purpose |
 |---------|---------|
-| `codeassay scan <paths>` | Scan repos for AI commits and rework |
+| `codeassay scan <paths>` | Scan repos for AI commits and rework (supports `--with-scorer`, `--dry-run`) |
 | `codeassay report` | Generate quality report (CLI or markdown) |
-| `codeassay commits` | List AI-authored commits |
+| `codeassay commits` | List AI-authored commits (supports `--source <glob>`, `--tool`) |
 | `codeassay rework` | List rework events with classification |
 | `codeassay reclassify <commit> <category>` | Override a classification |
 | `codeassay export --format json` | Export raw data |
 | `codeassay dashboard` | Open interactive HTML dashboard in browser |
+| `codeassay config init` | Scaffold `.codeassay.toml` in the current repo |
+| `codeassay config show` | Print merged effective config |
+| `codeassay detect-test <hash>` | Dry-run detection pipeline against one commit |
+| `codeassay tag [--tool <name>]` | Add `AI-Assisted:` trailer to a commit (hook or amend) |
+| `codeassay install-hook [--tool <name>] [--mode always\|prompt]` | Install `prepare-commit-msg` hook |
+| `codeassay uninstall-hook` | Remove the hook |
 
 ## How It Works
 
-**AI Commit Detection** identifies AI-authored commits via:
-1. `Co-Authored-By` trailers (Claude, Copilot, GPT)
-2. Branch naming patterns (Superpowers worktrees)
-3. Manual `AI-Assisted: true` trailers
+**AI Commit Detection** is layered — configurable in `.codeassay.toml`:
+
+1. **User-defined rules** (highest priority) — match commits by author regex, branch pattern, commit-message regex, or author-plus-date-window.
+2. **Built-in profiles** — shipped detectors for Claude Code, GitHub Copilot, Cursor, Aider, Windsurf, ChatGPT, and Gemini. Enabled by default, disable individually.
+3. **Probabilistic scorer** (opt-in) — weights weak signals (diff shape, message structure, commit velocity, emoji, boilerplate headers, file diversity, punctuation) for commits no deterministic rule caught.
+
+First match wins. Run `codeassay config init` to scaffold a starter config, `codeassay config show` to inspect the effective config, and `codeassay detect-test <hash>` to dry-run detection against a single commit.
+
+To reliably tag AI commits going forward, install a git hook:
+
+```bash
+codeassay install-hook --tool cursor --mode always
+```
+
+This appends `AI-Assisted: cursor` to each commit message (idempotent — skips if a Co-Authored-By AI trailer is already present).
 
 **Rework Detection** traces subsequent commits that modify AI-authored lines using `git blame` ancestry within a configurable time window (default: 14 days).
 
