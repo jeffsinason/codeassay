@@ -107,3 +107,36 @@ def test_scan_repo_incremental(tmp_repo, db_conn):
     from codeassay.db import get_ai_commits
     all_commits = get_ai_commits(db_conn, repo_path=str(tmp_repo))
     assert len(all_commits) == 2
+
+
+def test_scan_repo_records_source(tmp_repo, db_conn):
+    _make_commit(
+        tmp_repo, "foo.py", "print('hi')\n",
+        "feat: foo",
+        co_author="Claude <x@anthropic.com>",
+    )
+    scan_repo(tmp_repo, db_conn)
+    from codeassay.db import get_ai_commits
+    rows = get_ai_commits(db_conn, repo_path=str(tmp_repo))
+    assert len(rows) == 1
+    assert rows[0]["source"] == "profile:claude_code"
+    assert rows[0]["tool"] == "claude_code"
+
+
+def test_scan_repo_respects_user_config_override(tmp_repo, db_conn):
+    (tmp_repo / ".codeassay.toml").write_text(
+        '[[detect.message]]\n'
+        'pattern = "Co-Authored-By:.*Claude"\n'
+        'tool = "custom_brand"\n'
+        'confidence = "high"\n'
+    )
+    _make_commit(
+        tmp_repo, "foo.py", "x\n",
+        "feat: foo",
+        co_author="Claude <x@anthropic.com>",
+    )
+    scan_repo(tmp_repo, db_conn)
+    from codeassay.db import get_ai_commits
+    rows = get_ai_commits(db_conn, repo_path=str(tmp_repo))
+    assert rows[0]["tool"] == "custom_brand"
+    assert rows[0]["source"] == "user:detect.message[0]"
