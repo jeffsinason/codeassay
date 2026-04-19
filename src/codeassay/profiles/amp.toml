@@ -1,0 +1,21 @@
+# Amp — https://ampcode.com  (Sourcegraph)
+# Agentic coding tool by Sourcegraph (evolved from Cody). Amp adds a
+# co-author trailer to git commits by default:
+#   "Co-authored-by: Amp <amp@ampcode.com>"
+# Configurable via amp.git.commit.coauthor.enabled (default: true).
+# Verified via ampcode.com/manual and search results (April 2026).
+
+[[detect.message]]
+pattern = 'Co-[Aa]uthored-[Bb]y:.*Amp.*amp@ampcode\.com'
+tool = "amp"
+confidence = "high"
+
+[[detect.message]]
+pattern = 'Co-[Aa]uthored-[Bb]y:.*Amp'
+tool = "amp"
+confidence = "high"
+
+[[detect.author]]
+pattern = 'amp@ampcode\.com'
+tool = "amp"
+confidence = "high"

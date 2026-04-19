@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "codeassay"
-version = "0.1.1"
+version = "0.2.0"
 description = "Git forensics tool for analyzing AI-authored code quality"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [
     {name = "Jeff Sinason", email = "jeffsinason@echoforgex.com"},
 ]
@@ -16,6 +16,8 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Software Development :: Quality Assurance",
 ]
 
@@ -24,6 +26,9 @@ codeassay = "codeassay.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"codeassay.profiles" = ["*.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -13,10 +13,21 @@ from codeassay.db import init_db
 
 @pytest.fixture
 def tmp_repo(tmp_path):
-    """Create a temporary git repo with some commits for testing."""
+    """Create a temporary git repo with some commits for testing.
+
+    Disables any user-global hook templates so tests see commit messages
+    exactly as written (some environments install a prepare-commit-msg hook
+    that strips AI co-author trailers).
+    """
     repo = tmp_path / "test-repo"
     repo.mkdir()
-    subprocess.run(["git", "init"], cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "init", "--template="], cwd=repo, capture_output=True
+    )
+    subprocess.run(
+        ["git", "config", "core.hooksPath", "/dev/null"],
+        cwd=repo, capture_output=True,
+    )
     subprocess.run(
         ["git", "config", "user.email", "test@test.com"], cwd=repo, capture_output=True
     )

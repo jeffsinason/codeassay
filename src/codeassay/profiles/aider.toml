@@ -1,0 +1,31 @@
+# Aider — https://aider.chat
+# AI pair-programming CLI tool. Aider uses Conventional Commits by default
+# (no prefix or footer unless attribution flags are set). When attribution
+# flags are enabled:
+#   --attribute-commit-message-author / --attribute-commit-message-committer
+#     prefixes the commit message subject with "aider: "
+#   --attribute-co-authored-by
+#     appends "Co-authored-by: aider (<model>) <noreply@aider.chat>"
+# Verified via aider.chat/docs/git.html and aider-ai/aider issue #4226
+# (April 2026). The "aider: " prefix is NOT the default — it requires a flag.
+# The Co-authored-by trailer email noreply@aider.chat is confirmed.
+
+[[detect.message]]
+pattern = '^aider: '
+tool = "aider"
+confidence = "medium"
+
+[[detect.message]]
+pattern = 'Co-[Aa]uthored-[Bb]y:.*aider.*noreply@aider\.chat'
+tool = "aider"
+confidence = "high"
+
+[[detect.message]]
+pattern = 'Co-[Aa]uthored-[Bb]y:.*aider'
+tool = "aider"
+confidence = "high"
+
+[[detect.author]]
+pattern = 'noreply@aider\.chat'
+tool = "aider"
+confidence = "high"

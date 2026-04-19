@@ -1,0 +1,11 @@
+# ChatGPT / OpenAI Codex CLI
+
+[[detect.message]]
+pattern = 'Co-Authored-By:.*GPT'
+tool = "gpt"
+confidence = "high"
+
+[[detect.message]]
+pattern = 'Co-Authored-By:.*ChatGPT'
+tool = "gpt"
+confidence = "high"

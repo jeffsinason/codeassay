@@ -13,7 +13,9 @@ CREATE TABLE IF NOT EXISTS ai_commits (
     tool TEXT NOT NULL,
     detection_method TEXT NOT NULL,
     confidence TEXT NOT NULL,
+    detection_confidence INTEGER,
     files_changed TEXT NOT NULL,
+    source TEXT,
     PRIMARY KEY (commit_hash, repo_path)
 );
 
@@ -38,10 +40,16 @@ CREATE TABLE IF NOT EXISTS scan_metadata (
 
 
 def init_db(db_path: Path) -> None:
-    """Create the database and tables if they don't exist."""
+    """Create the database and tables if they don't exist. Applies idempotent migrations."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     conn.executescript(SCHEMA)
+    # Idempotent migration: ensure ai_commits.source exists for legacy DBs.
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(ai_commits)")]
+    if "source" not in cols:
+        conn.execute("ALTER TABLE ai_commits ADD COLUMN source TEXT")
+    if "detection_confidence" not in cols:
+        conn.execute("ALTER TABLE ai_commits ADD COLUMN detection_confidence INTEGER")
     conn.commit()
     conn.close()
 
@@ -65,15 +73,17 @@ def insert_ai_commit(
     detection_method: str,
     confidence: str,
     files_changed: str,
+    source: str | None = None,
+    detection_confidence: int | None = None,
 ) -> None:
     """Insert an AI commit, ignoring duplicates."""
     conn.execute(
         """INSERT OR IGNORE INTO ai_commits
            (commit_hash, repo_path, author, date, message, tool,
-            detection_method, confidence, files_changed)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            detection_method, confidence, detection_confidence, files_changed, source)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (commit_hash, repo_path, author, date, message, tool,
-         detection_method, confidence, files_changed),
+         detection_method, confidence, detection_confidence, files_changed, source),
     )
     conn.commit()
 

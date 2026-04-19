@@ -1,0 +1,15 @@
+# v0 — https://v0.dev  (Vercel)
+# AI UI-generation tool by Vercel. When GitHub integration is enabled, v0
+# creates a dedicated branch per chat session using the pattern
+# "v0/<slug>-<hash>" and commits to it automatically. The commit author is
+# the authenticated user's GitHub identity — v0 does NOT inject a
+# Co-Authored-By trailer or a bot author email by default (confirmed via
+# v0.app/docs/github, April 2026). Branch pattern is the only reliable
+# signal without external tooling.
+# CAUTION: currently no strong default signature. Add user rules in
+# .codeassay.toml if your team uses this tool.
+
+[[detect.branch]]
+pattern = '^v0/'
+tool = "v0_dev"
+confidence = "medium"

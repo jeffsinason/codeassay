@@ -1,0 +1,15 @@
+# Continue — https://continue.dev
+# Open-source AI coding assistant (VS Code / JetBrains extension). Continue
+# operates as an inline completion and chat assistant; it does NOT author
+# commits, create branches, or inject commit trailers by default. Commits
+# using Continue are indistinguishable from ordinary user commits at the
+# git level. No detectable signature exists (confirmed by reviewing
+# continuedev/continue repository and VS Code extension package.json, April
+# 2026).
+# CAUTION: currently no strong default signature. Add user rules in
+# .codeassay.toml if your team uses this tool.
+
+[[detect.message]]
+pattern = 'Co-[Aa]uthored-[Bb]y:.*[Cc]ontinue'
+tool = "continue_dev"
+confidence = "medium"

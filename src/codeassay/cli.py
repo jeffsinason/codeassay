@@ -15,7 +15,15 @@ from codeassay.dashboard import generate_dashboard
 from codeassay.metrics import compute_metrics, compute_trend_data
 from codeassay.reporting import format_cli_report, format_markdown_report
 from codeassay.rework import detect_rework
-from codeassay.scanner import scan_repo
+from codeassay.detection import classify
+from codeassay.detection.config import load_config
+from codeassay.detection.profiles import load_profiles
+from codeassay.detection.scorer import per_signal_contributions
+from codeassay.scanner import scan_repo, _branches_containing
+from codeassay.tag import (
+    add_trailer_to_message_file, amend_head_with_trailer,
+    install_hook, uninstall_hook,
+)
 
 
 def get_db_path(repo_path: Path) -> Path:
@@ -57,6 +65,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     scan_p = sub.add_parser("scan", help="Scan repos for AI commits and rework")
     scan_p.add_argument("repos", nargs="+", help="Paths to git repos to scan")
+    scan_p.add_argument("--with-scorer", action="store_true",
+                        help="Force-enable probabilistic scorer for this scan")
+    scan_p.add_argument("--dry-run", action="store_true",
+                        help="Report matches without writing to DB")
 
     report_p = sub.add_parser("report", help="Generate quality report")
     report_p.add_argument("--format", choices=["cli", "markdown"], default="cli")
@@ -72,11 +84,13 @@ def build_parser() -> argparse.ArgumentParser:
     commits_p.add_argument("--tool", help="Filter by AI tool")
     commits_p.add_argument("--since", help="Start date")
     commits_p.add_argument("--until", help="End date")
+    commits_p.add_argument("--source", help="Filter by detection source glob (e.g. 'profile:*')")
 
     rework_p = sub.add_parser("rework", help="List rework events")
     rework_p.add_argument("--since", help="Start date")
     rework_p.add_argument("--until", help="End date")
     rework_p.add_argument("--category", help="Filter by category")
+    rework_p.add_argument("--source", help="Filter rework's original-commit source by glob")
 
     reclass_p = sub.add_parser("reclassify", help="Override rework classification")
     reclass_p.add_argument("commit", help="Rework commit hash")
@@ -89,6 +103,26 @@ def build_parser() -> argparse.ArgumentParser:
     dash_p.add_argument("--output", help="Output file path (default: .codeassay/dashboard.html)")
     dash_p.add_argument("--no-open", action="store_true", help="Don't open browser automatically")
 
+    tag_p = sub.add_parser("tag", help="Add AI-Assisted trailer to a commit message")
+    tag_p.add_argument("--tool", default="unknown", help="AI tool name (default: unknown)")
+    tag_p.add_argument("message_file", nargs="?", help="Hook-mode: path to commit message file")
+
+    hook_p = sub.add_parser("install-hook", help="Install prepare-commit-msg hook")
+    hook_p.add_argument("--tool", default="unknown")
+    hook_p.add_argument("--mode", choices=["always", "prompt"], default="always")
+    hook_p.add_argument("--force", action="store_true", help="Overwrite existing hook")
+
+    uninst_p = sub.add_parser("uninstall-hook", help="Remove codeassay-managed hook")
+
+    config_p = sub.add_parser("config", help="Manage .codeassay.toml")
+    config_sub = config_p.add_subparsers(dest="config_action")
+    config_init_p = config_sub.add_parser("init", help="Write starter .codeassay.toml")
+    config_init_p.add_argument("--force", action="store_true")
+    config_show_p = config_sub.add_parser("show", help="Print merged effective config")
+
+    dt_p = sub.add_parser("detect-test", help="Dry-run detection against one commit")
+    dt_p.add_argument("commit", help="Commit hash")
+
     return parser
 
 
@@ -98,18 +132,20 @@ def cmd_scan(args) -> None:
         if not (repo_path / ".git").exists():
             print(f"Skipping {repo_str}: not a git repository", file=sys.stderr)
             continue
-
         db_path = get_db_path(repo_path)
         init_db(db_path)
         _ensure_gitignore(repo_path)
         conn = get_connection(db_path)
-
-        scan_result = scan_repo(repo_path, conn)
-        rework_result = detect_rework(repo_path, conn)
-
+        scan_result = scan_repo(
+            repo_path, conn,
+            dry_run=args.dry_run,
+            force_scorer=args.with_scorer,
+        )
+        rework_result = {"rework_events": 0} if args.dry_run else detect_rework(repo_path, conn)
         name = _get_repo_name(repo_path)
+        suffix = " (dry-run)" if args.dry_run else ""
         print(
-            f"Scanned {name}: "
+            f"Scanned {name}{suffix}: "
             f"{scan_result['total_commits']} commits, "
             f"{scan_result['ai_commits']} AI commits, "
             f"{rework_result['rework_events']} rework events"
@@ -151,44 +187,50 @@ def cmd_report(args) -> None:
 
 
 def cmd_commits(args) -> None:
+    import fnmatch
     repo_path = Path.cwd().resolve()
     db_path = get_db_path(repo_path)
     if not db_path.exists():
         print("No scan data found. Run 'codeassay scan .' first.", file=sys.stderr)
         sys.exit(1)
-
     conn = get_connection(db_path)
     commits = get_ai_commits(conn, repo_path=str(repo_path))
-
     if args.tool:
         commits = [c for c in commits if c["tool"] == args.tool]
-
+    if args.source:
+        commits = [
+            c for c in commits
+            if c.get("source") and fnmatch.fnmatch(c["source"], args.source)
+        ]
     for c in commits:
         tool_tag = f"[{c['tool']}]"
         print(f"{c['commit_hash'][:8]} {c['date'][:10]} {tool_tag:16s} {c['message'][:60]}")
-
     conn.close()
 
 
 def cmd_rework(args) -> None:
+    import fnmatch
     repo_path = Path.cwd().resolve()
     db_path = get_db_path(repo_path)
     if not db_path.exists():
         print("No scan data found. Run 'codeassay scan .' first.", file=sys.stderr)
         sys.exit(1)
-
     conn = get_connection(db_path)
     events = get_rework_events(conn, repo_path=str(repo_path))
-
     if args.category:
         events = [e for e in events if e["category"] == args.category]
-
+    if args.source:
+        ai_commits = {c["commit_hash"]: c.get("source") for c in get_ai_commits(conn, repo_path=str(repo_path))}
+        events = [
+            e for e in events
+            if ai_commits.get(e["original_commit"])
+            and fnmatch.fnmatch(ai_commits[e["original_commit"]], args.source)
+        ]
     for e in events:
         print(
             f"{e['rework_commit'][:8]} -> {e['original_commit'][:8]} "
             f"[{e['category']:24s}] {e['confidence']:6s} {e['files_affected']}"
         )
-
     conn.close()
 
 
@@ -219,6 +261,107 @@ def cmd_export(args) -> None:
     }
     print(json.dumps(data, indent=2))
     conn.close()
+
+
+def cmd_tag(args) -> None:
+    if args.message_file:
+        add_trailer_to_message_file(Path(args.message_file), tool=args.tool)
+    else:
+        amend_head_with_trailer(tool=args.tool, cwd=Path.cwd())
+
+
+def cmd_install_hook(args) -> None:
+    try:
+        install_hook(Path.cwd(), tool=args.tool, mode=args.mode, force=args.force)
+    except (ValueError, RuntimeError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        sys.exit(2)
+    print(f"Installed prepare-commit-msg hook (tool={args.tool}, mode={args.mode})")
+
+
+def cmd_config(args) -> None:
+    if args.config_action == "init":
+        _config_init(Path.cwd(), force=args.force)
+    elif args.config_action == "show":
+        _config_show(Path.cwd())
+    else:
+        print("Usage: codeassay config {init,show}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _config_init(repo_path: Path, *, force: bool) -> None:
+    from codeassay.detection.config_init import STARTER_TEMPLATE
+    cfg = repo_path / ".codeassay.toml"
+    if cfg.exists() and not force:
+        print(f"{cfg} exists (use --force to overwrite)", file=sys.stderr)
+        sys.exit(1)
+    cfg.write_text(STARTER_TEMPLATE)
+    print(f"Wrote {cfg}")
+
+
+def _config_show(repo_path: Path) -> None:
+    from codeassay.detection.config import load_config
+    from codeassay.detection.profiles import load_profiles
+    cfg = load_config(repo_path)
+    profiles = load_profiles(disabled=cfg.disabled_profiles)
+    print("User rules:")
+    for cat in ("author_rules", "branch_rules", "message_rules", "window_rules"):
+        rules = getattr(cfg, cat)
+        print(f"  {cat}: {len(rules)}")
+    print(f"Disabled profiles: {sorted(cfg.disabled_profiles) or '(none)'}")
+    print(f"Enabled profiles: {[p.name for p in profiles]}")
+    print(f"Scorer enabled: {cfg.score.enabled} (threshold={cfg.score.threshold})")
+
+
+def cmd_detect_test(args) -> None:
+    repo_path = Path.cwd().resolve()
+    result = subprocess.run(
+        ["git", "log", "-1", f"--format=%H%n%an%n%ae%n%aI%n%B", args.commit],
+        cwd=repo_path, capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        print(f"commit {args.commit} not found", file=sys.stderr)
+        sys.exit(1)
+    lines = result.stdout.splitlines()
+    if len(lines) < 5:
+        print("unexpected git log output", file=sys.stderr)
+        sys.exit(1)
+    commit = {
+        "hash": lines[0],
+        "author": lines[1],
+        "author_email": lines[2],
+        "date": lines[3],
+        "message": "\n".join(lines[4:]),
+        "branches": _branches_containing(repo_path, args.commit),
+    }
+    config = load_config(repo_path)
+    profiles = load_profiles(disabled=config.disabled_profiles)
+    detection = classify(commit, config=config, profiles=profiles)
+    print(f"Commit: {commit['hash'][:12]} by {commit['author']} <{commit['author_email']}>")
+    print(f"Branches containing this commit: {sorted(commit['branches']) or '(none)'}")
+    if detection is None:
+        print("Result: no match (human-authored)")
+        if config.score.enabled:
+            contributions = per_signal_contributions(
+                commit=commit, diff_stats=[], seconds_since_prior=None,
+                config=config.score,
+            )
+            print("Scorer breakdown (disabled or below threshold):")
+            for name, data in contributions.items():
+                print(f"  {name}: raw={data['raw']:.2f} weighted={data['weighted']:.3f}")
+        return
+    print(f"Result: AI ({detection.tool}, confidence={detection.confidence})")
+    print(f"  method: {detection.method}")
+    print(f"  source: {detection.source}")
+
+
+def cmd_uninstall_hook(args) -> None:
+    try:
+        uninstall_hook(Path.cwd())
+    except RuntimeError as e:
+        print(f"error: {e}", file=sys.stderr)
+        sys.exit(2)
+    print("Uninstalled prepare-commit-msg hook (if present)")
 
 
 def cmd_dashboard(args) -> None:
@@ -258,6 +401,11 @@ COMMANDS = {
     "reclassify": cmd_reclassify,
     "export": cmd_export,
     "dashboard": cmd_dashboard,
+    "tag": cmd_tag,
+    "install-hook": cmd_install_hook,
+    "uninstall-hook": cmd_uninstall_hook,
+    "config": cmd_config,
+    "detect-test": cmd_detect_test,
 }
 
 

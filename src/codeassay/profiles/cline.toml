@@ -1,0 +1,19 @@
+# Cline (formerly Claude Dev) — https://cline.bot
+# Open-source VS Code extension (publisher: Cline Bot Inc, package name
+# "claude-dev"). Cline generates commit messages via the
+# cline.generateGitCommitMessage command but does NOT inject a Co-Authored-By
+# trailer or bot author email into commits by default. No autonomous
+# commit-authorship mechanism was found (confirmed via cline/cline repo,
+# April 2026). The only pattern detectable is if a team adds one manually.
+# CAUTION: currently no strong default signature. Add user rules in
+# .codeassay.toml if your team uses this tool.
+
+[[detect.message]]
+pattern = 'Co-[Aa]uthored-[Bb]y:.*[Cc]line'
+tool = "cline"
+confidence = "medium"
+
+[[detect.branch]]
+pattern = '^cline/'
+tool = "cline"
+confidence = "medium"

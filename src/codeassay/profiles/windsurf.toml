@@ -1,0 +1,25 @@
+# Windsurf / Codeium — https://windsurf.com
+# AI IDE by Codeium. Windsurf generates commit messages via its AI Commit
+# Messages feature but does NOT inject a Co-Authored-By trailer or a bot
+# author email into commits by default (confirmed via
+# docs.windsurf.com/windsurf/ai-commit-message, April 2026).
+# The original placeholder "@codeium.com" author email and "Windsurf AI"
+# message pattern were UNVERIFIED — no documentation or real commits found
+# to confirm them.
+# TENTATIVE — field verification pending: no documented default commit
+# signature; patterns below are heuristic only.
+
+[[detect.author]]
+pattern = '@codeium\.com'
+tool = "windsurf"
+confidence = "medium"
+
+[[detect.message]]
+pattern = 'Windsurf'
+tool = "windsurf"
+confidence = "low"
+
+[[detect.branch]]
+pattern = '^windsurf/'
+tool = "windsurf"
+confidence = "medium"

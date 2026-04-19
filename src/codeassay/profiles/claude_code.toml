@@ -1,0 +1,22 @@
+# Claude Code — https://claude.com/claude-code
+# Detects via the official Co-Authored-By trailer and Superpowers branch conventions.
+
+[[detect.message]]
+pattern = 'Co-Authored-By:.*Claude'
+tool = "claude_code"
+confidence = "high"
+
+[[detect.message]]
+pattern = '🤖 Generated with \[Claude Code\]'
+tool = "claude_code"
+confidence = "high"
+
+[[detect.branch]]
+pattern = '^claude-'
+tool = "claude_code"
+confidence = "medium"
+
+[[detect.branch]]
+pattern = '^superpowers-'
+tool = "claude_code"
+confidence = "medium"

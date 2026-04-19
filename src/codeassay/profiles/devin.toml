@@ -1,0 +1,25 @@
+# Devin — https://devin.ai
+# Cognition Labs autonomous AI engineer. Devin commits via the
+# devin-ai-integration GitHub App bot account. The bot's noreply email
+# follows the GitHub Apps pattern. Verified against public PRs (e.g.
+# github.com/crewAIInc/crewAI/pull/2349) and botcommits.dev data.
+
+[[detect.author]]
+pattern = 'devin-ai-integration\[bot\]@users\.noreply\.github\.com'
+tool = "devin"
+confidence = "high"
+
+[[detect.author]]
+pattern = 'devin-ai-integration'
+tool = "devin"
+confidence = "high"
+
+[[detect.message]]
+pattern = 'Co-[Aa]uthored-[Bb]y:.*devin'
+tool = "devin"
+confidence = "high"
+
+[[detect.branch]]
+pattern = 'devin/'
+tool = "devin"
+confidence = "medium"
