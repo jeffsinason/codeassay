@@ -11,7 +11,9 @@ metric. Computed separately for AI vs human cohorts.
 from __future__ import annotations
 
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable
 
 
 def lines_added_by_commit(repo_path: Path, commit_sha: str, file: str) -> int:
@@ -63,3 +65,61 @@ def lines_survived_for_commit(
         if line.startswith(prefix) and len(line) > 40 and line[40] == " ":
             count += 1
     return count
+
+
+@dataclass(frozen=True)
+class CommitLineRecord:
+    commit_sha: str
+    file: str
+    lines_added: int
+    lines_survived: int
+
+
+@dataclass(frozen=True)
+class TurnoverSummary:
+    ai_lines_added: int
+    ai_lines_discarded: int
+    human_lines_added: int
+    human_lines_discarded: int
+    ai_turnover: float
+    human_turnover: float
+    ai_turnover_ratio: float | None  # None if human_turnover == 0
+
+
+def compute_turnover_metrics(
+    records: Iterable[CommitLineRecord],
+    *,
+    ai_shas: set[str],
+) -> TurnoverSummary:
+    """Aggregate per-commit line records into AI vs human turnover rates.
+
+    Args:
+        records: per-(commit, file) survival data.
+        ai_shas: set of commit SHAs classified as AI-authored.
+
+    Returns:
+        TurnoverSummary with both cohort rates plus the AI/human ratio.
+        ratio is None when human_turnover is 0 (division guard).
+    """
+    ai_added = ai_discarded = 0
+    hu_added = hu_discarded = 0
+    for r in records:
+        discarded = max(0, r.lines_added - r.lines_survived)
+        if r.commit_sha in ai_shas:
+            ai_added += r.lines_added
+            ai_discarded += discarded
+        else:
+            hu_added += r.lines_added
+            hu_discarded += discarded
+    ai_rate = (ai_discarded / ai_added) if ai_added else 0.0
+    hu_rate = (hu_discarded / hu_added) if hu_added else 0.0
+    ratio = (ai_rate / hu_rate) if hu_rate > 0 else None
+    return TurnoverSummary(
+        ai_lines_added=ai_added,
+        ai_lines_discarded=ai_discarded,
+        human_lines_added=hu_added,
+        human_lines_discarded=hu_discarded,
+        ai_turnover=ai_rate,
+        human_turnover=hu_rate,
+        ai_turnover_ratio=ratio,
+    )

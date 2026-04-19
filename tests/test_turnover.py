@@ -56,3 +56,59 @@ def test_lines_survived_full_rewrite(tmp_repo):
     _commit(tmp_repo, "a.py", "x\ny\nz\n", "rewrite a.py")
     survived = lines_survived_for_commit(tmp_repo, sha, "a.py", as_of="HEAD")
     assert survived == 0
+
+
+from datetime import date, timedelta
+from codeassay.turnover import (
+    CommitLineRecord, compute_turnover_metrics, TurnoverSummary,
+)
+
+
+def test_turnover_zero_commits():
+    summary = compute_turnover_metrics([], ai_shas=set())
+    assert summary.ai_turnover == 0.0
+    assert summary.human_turnover == 0.0
+    assert summary.ai_turnover_ratio is None  # no human baseline
+
+
+def test_turnover_all_survived():
+    records = [
+        CommitLineRecord(commit_sha="a", file="f", lines_added=10, lines_survived=10),
+        CommitLineRecord(commit_sha="b", file="f", lines_added=5, lines_survived=5),
+    ]
+    summary = compute_turnover_metrics(records, ai_shas={"a"})
+    assert summary.human_turnover == 0.0
+    assert summary.ai_turnover == 0.0
+
+
+def test_turnover_half_discarded():
+    records = [
+        CommitLineRecord(commit_sha="ai1", file="f", lines_added=100, lines_survived=50),
+        CommitLineRecord(commit_sha="h1", file="f", lines_added=100, lines_survived=80),
+    ]
+    summary = compute_turnover_metrics(records, ai_shas={"ai1"})
+    assert summary.ai_turnover == 0.5
+    assert summary.human_turnover == 0.2
+    assert summary.ai_turnover_ratio == 2.5
+
+
+def test_turnover_aggregates_multiple_files_per_commit():
+    records = [
+        CommitLineRecord(commit_sha="ai1", file="a.py", lines_added=50, lines_survived=0),
+        CommitLineRecord(commit_sha="ai1", file="b.py", lines_added=50, lines_survived=50),
+    ]
+    summary = compute_turnover_metrics(records, ai_shas={"ai1"})
+    assert summary.ai_turnover == 0.5  # 50 of 100 discarded
+    assert summary.human_turnover == 0.0
+    assert summary.ai_turnover_ratio is None  # no human lines
+
+
+def test_turnover_ratio_none_when_human_zero_turnover():
+    records = [
+        CommitLineRecord(commit_sha="ai1", file="f", lines_added=10, lines_survived=5),
+        CommitLineRecord(commit_sha="h1", file="f", lines_added=10, lines_survived=10),
+    ]
+    summary = compute_turnover_metrics(records, ai_shas={"ai1"})
+    assert summary.ai_turnover == 0.5
+    assert summary.human_turnover == 0.0
+    assert summary.ai_turnover_ratio is None  # division by zero guarded
