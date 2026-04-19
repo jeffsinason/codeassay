@@ -196,3 +196,25 @@ def set_rework_override(
         (new_category, rework_commit),
     )
     conn.commit()
+
+
+def insert_commit_line(
+    conn: sqlite3.Connection,
+    *,
+    commit_sha: str,
+    repo_path: str,
+    file: str,
+    lines_added: int,
+    lines_survived: int,
+    measurement_window_end: str,
+) -> None:
+    """Insert (or replace) a per-commit per-file line-survival record."""
+    conn.execute(
+        """INSERT OR REPLACE INTO commit_lines
+           (commit_sha, repo_path, file, lines_added,
+            lines_survived, measurement_window_end)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (commit_sha, repo_path, file, lines_added, lines_survived,
+         measurement_window_end),
+    )
+    conn.commit()

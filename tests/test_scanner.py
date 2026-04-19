@@ -152,3 +152,25 @@ def test_scan_repo_respects_user_config_override(tmp_repo, db_conn):
     rows = get_ai_commits(db_conn, repo_path=str(tmp_repo))
     assert rows[0]["tool"] == "custom_brand"
     assert rows[0]["source"] == "user:detect.message[0]"
+
+
+def test_scan_repo_populates_commit_lines(tmp_repo, db_conn):
+    _make_commit(
+        tmp_repo, "foo.py", "a\nb\nc\n",
+        "feat: foo",
+        co_author="Claude <x@anthropic.com>",
+    )
+    _make_commit(tmp_repo, "bar.py", "x\ny\n", "feat: human add bar")
+    scan_repo(tmp_repo, db_conn)
+    rows = db_conn.execute(
+        "SELECT commit_sha, file, lines_added, lines_survived FROM commit_lines ORDER BY file"
+    ).fetchall()
+    # Should have at least 2 rows — one per file added by the two commits.
+    # (Initial commit from fixture is Test User, also human, also counted.)
+    files = {r["file"] for r in rows}
+    assert "foo.py" in files
+    assert "bar.py" in files
+    # foo.py: 3 lines added, all survived (HEAD unchanged for that file)
+    foo = next(r for r in rows if r["file"] == "foo.py")
+    assert foo["lines_added"] == 3
+    assert foo["lines_survived"] == 3

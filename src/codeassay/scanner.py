@@ -10,12 +10,14 @@ from pathlib import Path
 from codeassay.db import (
     get_last_scanned_commit,
     insert_ai_commit,
+    insert_commit_line,
     set_last_scanned_commit,
 )
 from codeassay.detection import classify
 from codeassay.detection.config import load_config
 from codeassay.detection.profiles import load_profiles
 from codeassay.ignore import filter_files_csv, load_ignore_patterns
+from codeassay.turnover import lines_added_by_commit, lines_survived_for_commit
 
 DELIMITER = "---AIQUALITY---"
 LOG_FORMAT = f"%H{DELIMITER}%an{DELIMITER}%ae{DELIMITER}%aI{DELIMITER}%B{DELIMITER}"
@@ -178,6 +180,30 @@ def scan_repo(
             diff_stats=diff_stats, seconds_since_prior=seconds_since_prior,
         )
         prior = commit
+
+        # Populate commit_lines for turnover — for all commits, AI or human.
+        if not dry_run:
+            changed_files_csv = _get_changed_files(repo_path, commit["hash"])
+            today_iso = datetime.now().date().isoformat()
+            for f in changed_files_csv.split(","):
+                if not f:
+                    continue
+                added = lines_added_by_commit(repo_path, commit["hash"], f)
+                if added == 0:
+                    continue  # skip binaries / pure-delete commits
+                survived = lines_survived_for_commit(
+                    repo_path, commit["hash"], f, as_of="HEAD"
+                )
+                insert_commit_line(
+                    conn,
+                    commit_sha=commit["hash"],
+                    repo_path=repo_str,
+                    file=f,
+                    lines_added=added,
+                    lines_survived=survived,
+                    measurement_window_end=today_iso,
+                )
+
         if detection is None:
             continue
 
