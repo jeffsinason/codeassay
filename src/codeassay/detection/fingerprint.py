@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import re
 from collections import Counter
+from dataclasses import dataclass
 
 _COMMENT_RE = re.compile(r"^\s*(//|#|/\*|\*)")
 _IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
@@ -52,3 +53,36 @@ def metric_punctuation_density(message: str) -> float:
 def metric_message_length(message: str) -> int:
     """Character count of commit message."""
     return len(message)
+
+
+@dataclass(frozen=True)
+class Baseline:
+    """Per-author, per-metric running baseline."""
+    mean: float
+    stddev: float
+    sample_size: int
+
+
+def update_baseline(b: Baseline, *, new_value: float) -> Baseline:
+    """Welford's online algorithm for incremental mean + sample stddev."""
+    n = b.sample_size + 1
+    # Convert stored (mean, stddev, n) back into Welford's M2.
+    old_m2 = b.stddev * b.stddev * max(b.sample_size - 1, 0)
+    delta = new_value - b.mean
+    new_mean = b.mean + delta / n
+    new_m2 = old_m2 + delta * (new_value - new_mean)
+    new_stddev = math.sqrt(new_m2 / (n - 1)) if n > 1 else 0.0
+    return Baseline(mean=new_mean, stddev=new_stddev, sample_size=n)
+
+
+def is_divergent(
+    baseline: Baseline, *, value: float, sigma: float = 2.0,
+    min_sample: int = 20,
+) -> bool:
+    """Z-score divergence check with minimum sample gating."""
+    if baseline.sample_size < min_sample:
+        return False
+    if baseline.stddev == 0:
+        return value != baseline.mean
+    z = abs(value - baseline.mean) / baseline.stddev
+    return z >= sigma
