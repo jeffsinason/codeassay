@@ -20,7 +20,7 @@ DEFAULT_WEIGHTS = {
     "perfect_punctuation": 0.15,
 }
 VALID_CONFIDENCE = {"high", "medium", "low"}
-KNOWN_TOP_LEVEL_KEYS = {"profiles", "detect", "score"}
+KNOWN_TOP_LEVEL_KEYS = {"profiles", "detect", "score", "turnover", "fingerprint"}
 
 
 @dataclass(frozen=True)
@@ -48,6 +48,22 @@ class ScoreConfig:
 
 
 @dataclass
+class TurnoverConfig:
+    lookback_days: int = 90
+    rewrite_window_days: int = 30
+    yellow_threshold: float = 0.04
+    red_threshold: float = 0.06
+
+
+@dataclass
+class FingerprintConfig:
+    enabled: bool = False
+    min_prior_commits: int = 20
+    sigma_threshold: float = 2.0
+    min_divergent_metrics: int = 3
+
+
+@dataclass
 class DetectionConfig:
     author_rules: list[RuleSpec] = field(default_factory=list)
     branch_rules: list[RuleSpec] = field(default_factory=list)
@@ -55,6 +71,8 @@ class DetectionConfig:
     window_rules: list[WindowSpec] = field(default_factory=list)
     disabled_profiles: set[str] = field(default_factory=set)
     score: ScoreConfig = field(default_factory=ScoreConfig)
+    turnover: TurnoverConfig = field(default_factory=TurnoverConfig)
+    fingerprint: FingerprintConfig = field(default_factory=FingerprintConfig)
 
 
 def _warn(msg: str) -> None:
@@ -138,6 +156,24 @@ def _parse_score(score_raw: dict) -> ScoreConfig:
     )
 
 
+def _parse_turnover(raw: dict) -> TurnoverConfig:
+    return TurnoverConfig(
+        lookback_days=int(raw.get("lookback_days", 90)),
+        rewrite_window_days=int(raw.get("rewrite_window_days", 30)),
+        yellow_threshold=float(raw.get("yellow_threshold", 0.04)),
+        red_threshold=float(raw.get("red_threshold", 0.06)),
+    )
+
+
+def _parse_fingerprint(raw: dict) -> FingerprintConfig:
+    return FingerprintConfig(
+        enabled=bool(raw.get("enabled", False)),
+        min_prior_commits=int(raw.get("min_prior_commits", 20)),
+        sigma_threshold=float(raw.get("sigma_threshold", 2.0)),
+        min_divergent_metrics=int(raw.get("min_divergent_metrics", 3)),
+    )
+
+
 def _parse_disabled_profiles(profiles_raw: dict) -> set[str]:
     disabled = set()
     for name, settings in profiles_raw.items():
@@ -167,4 +203,6 @@ def load_config(repo_path: Path) -> DetectionConfig:
         window_rules=parse_window_list(detect.get("window", []), "detect.window"),
         disabled_profiles=_parse_disabled_profiles(raw.get("profiles", {})),
         score=_parse_score(raw.get("score", {})),
+        turnover=_parse_turnover(raw.get("turnover", {})),
+        fingerprint=_parse_fingerprint(raw.get("fingerprint", {})),
     )
