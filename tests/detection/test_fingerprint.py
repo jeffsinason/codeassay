@@ -117,3 +117,70 @@ def test_is_divergent_small_sample_returns_false():
     """If sample too small, never divergent (insufficient baseline)."""
     b = Baseline(mean=5.0, stddev=1.0, sample_size=3)
     assert is_divergent(b, value=100.0, sigma=2.0, min_sample=20) is False
+
+
+from codeassay.detection.fingerprint import classify_by_fingerprint, FingerprintResult
+
+
+def test_classify_returns_none_if_author_has_no_baseline():
+    baselines = {}
+    result = classify_by_fingerprint(
+        baselines=baselines,
+        commit_metrics={"avg_diff_size": 500, "comment_ratio": 0.2,
+                        "identifier_entropy": 3.0, "punctuation_density": 0.05,
+                        "message_length": 100},
+        sigma=2.0, min_divergent=3, min_prior_commits=20,
+    )
+    assert result is None
+
+
+def test_classify_none_when_too_few_commits():
+    baselines = {
+        name: Baseline(mean=100.0, stddev=10.0, sample_size=5)  # below min
+        for name in ["avg_diff_size", "comment_ratio", "identifier_entropy",
+                     "punctuation_density", "message_length"]
+    }
+    result = classify_by_fingerprint(
+        baselines=baselines,
+        commit_metrics={"avg_diff_size": 999, "comment_ratio": 0.99,
+                        "identifier_entropy": 999.0, "punctuation_density": 0.99,
+                        "message_length": 99999},
+        sigma=2.0, min_divergent=3, min_prior_commits=20,
+    )
+    assert result is None
+
+
+def test_classify_flags_when_3_of_5_diverge():
+    baselines = {
+        name: Baseline(mean=10.0, stddev=1.0, sample_size=30)
+        for name in ["avg_diff_size", "comment_ratio", "identifier_entropy",
+                     "punctuation_density", "message_length"]
+    }
+    # All 5 metrics 3σ above mean
+    commit_metrics = {name: 13.0 for name in baselines}
+    result = classify_by_fingerprint(
+        baselines=baselines, commit_metrics=commit_metrics,
+        sigma=2.0, min_divergent=3, min_prior_commits=20,
+    )
+    assert isinstance(result, FingerprintResult)
+    assert result.divergent_count == 5
+    assert len(result.divergent_metrics) == 5
+
+
+def test_classify_none_when_only_2_diverge():
+    baselines = {
+        name: Baseline(mean=10.0, stddev=1.0, sample_size=30)
+        for name in ["avg_diff_size", "comment_ratio", "identifier_entropy",
+                     "punctuation_density", "message_length"]
+    }
+    # Only 2 metrics diverge
+    commit_metrics = {
+        "avg_diff_size": 20.0, "comment_ratio": 20.0,
+        "identifier_entropy": 10.0, "punctuation_density": 10.0,
+        "message_length": 10.0,
+    }
+    result = classify_by_fingerprint(
+        baselines=baselines, commit_metrics=commit_metrics,
+        sigma=2.0, min_divergent=3, min_prior_commits=20,
+    )
+    assert result is None

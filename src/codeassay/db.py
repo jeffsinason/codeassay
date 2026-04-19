@@ -222,3 +222,50 @@ def insert_commit_line(
         (commit_sha, repo_path, file, lines_added, lines_survived,
          measurement_window_end),
     )
+
+
+def upsert_author_baseline(
+    conn: sqlite3.Connection,
+    *,
+    repo_path: str,
+    author_email: str,
+    metric_name: str,
+    mean_value: float,
+    stddev_value: float,
+    sample_size: int,
+    last_updated_sha: str,
+) -> None:
+    """Insert or update a per-(author, metric) baseline row."""
+    conn.execute(
+        """INSERT INTO author_baselines
+           (repo_path, author_email, metric_name, mean_value, stddev_value,
+            sample_size, last_updated_sha)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(repo_path, author_email, metric_name) DO UPDATE SET
+             mean_value = excluded.mean_value,
+             stddev_value = excluded.stddev_value,
+             sample_size = excluded.sample_size,
+             last_updated_sha = excluded.last_updated_sha""",
+        (repo_path, author_email, metric_name, mean_value, stddev_value,
+         sample_size, last_updated_sha),
+    )
+    conn.commit()
+
+
+def get_author_baselines(
+    conn: sqlite3.Connection, *, repo_path: str, author_email: str,
+) -> dict:
+    """Return {metric_name: Baseline} for an author, or empty dict."""
+    from codeassay.detection.fingerprint import Baseline
+    rows = conn.execute(
+        "SELECT metric_name, mean_value, stddev_value, sample_size "
+        "FROM author_baselines WHERE repo_path = ? AND author_email = ?",
+        (repo_path, author_email),
+    ).fetchall()
+    return {
+        r["metric_name"]: Baseline(
+            mean=r["mean_value"], stddev=r["stddev_value"],
+            sample_size=r["sample_size"],
+        )
+        for r in rows
+    }
