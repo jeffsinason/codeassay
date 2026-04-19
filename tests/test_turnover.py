@@ -3,7 +3,13 @@
 import subprocess
 from pathlib import Path
 
-from codeassay.turnover import lines_added_by_commit, lines_survived_for_commit
+from codeassay.turnover import (
+    CommitLineRecord,
+    compute_turnover_metrics,
+    lines_added_by_commit,
+    lines_survived_for_commit,
+    TurnoverSummary,
+)
 
 
 def _commit(repo: Path, filename: str, content: str, message: str) -> str:
@@ -58,12 +64,6 @@ def test_lines_survived_full_rewrite(tmp_repo):
     assert survived == 0
 
 
-from datetime import date, timedelta
-from codeassay.turnover import (
-    CommitLineRecord, compute_turnover_metrics, TurnoverSummary,
-)
-
-
 def test_turnover_zero_commits():
     summary = compute_turnover_metrics([], ai_shas=set())
     assert summary.ai_turnover == 0.0
@@ -90,6 +90,10 @@ def test_turnover_half_discarded():
     assert summary.ai_turnover == 0.5
     assert summary.human_turnover == 0.2
     assert summary.ai_turnover_ratio == 2.5
+    assert summary.ai_lines_added == 100
+    assert summary.ai_lines_discarded == 50
+    assert summary.human_lines_added == 100
+    assert summary.human_lines_discarded == 20
 
 
 def test_turnover_aggregates_multiple_files_per_commit():
