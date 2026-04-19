@@ -1,6 +1,10 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/jeffsinason/codeassay/main/codeassay_logo.png" alt="CodeAssay" width="240"/>
+</p>
+
 # CodeAssay
 
-Git forensics tool for analyzing AI-authored code quality. Detects AI-generated commits, identifies rework, classifies root causes, and generates quality reports.
+Git forensics tool for analyzing AI-authored code quality. Detects AI-generated commits, identifies rework, classifies root causes, measures code turnover rate, and generates quality reports.
 
 ## Install
 
