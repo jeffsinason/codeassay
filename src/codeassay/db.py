@@ -36,6 +36,27 @@ CREATE TABLE IF NOT EXISTS scan_metadata (
     repo_path TEXT PRIMARY KEY,
     last_scanned_commit TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS commit_lines (
+    commit_sha TEXT NOT NULL,
+    repo_path TEXT NOT NULL,
+    file TEXT NOT NULL,
+    lines_added INTEGER NOT NULL,
+    lines_survived INTEGER NOT NULL,
+    measurement_window_end TEXT NOT NULL,
+    PRIMARY KEY (commit_sha, repo_path, file)
+);
+
+CREATE TABLE IF NOT EXISTS author_baselines (
+    repo_path TEXT NOT NULL,
+    author_email TEXT NOT NULL,
+    metric_name TEXT NOT NULL,
+    mean_value REAL NOT NULL,
+    stddev_value REAL NOT NULL,
+    sample_size INTEGER NOT NULL,
+    last_updated_sha TEXT NOT NULL,
+    PRIMARY KEY (repo_path, author_email, metric_name)
+);
 """
 
 
