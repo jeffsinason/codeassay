@@ -382,10 +382,61 @@ def cmd_detect_test(args) -> None:
             print("Scorer breakdown (disabled or below threshold):")
             for name, data in contributions.items():
                 print(f"  {name}: raw={data['raw']:.2f} weighted={data['weighted']:.3f}")
+        _print_fingerprint_breakdown(repo_path=repo_path, commit=commit, config=config)
         return
     print(f"Result: AI ({detection.tool}, confidence={detection.confidence})")
     print(f"  method: {detection.method}")
     print(f"  source: {detection.source}")
+    print(f"  detection_confidence: {detection.detection_confidence}/100")
+    if detection.method == "fingerprint":
+        _print_fingerprint_breakdown(repo_path=repo_path, commit=commit, config=config)
+
+
+def _print_fingerprint_breakdown(*, repo_path: Path, commit: dict, config) -> None:
+    """Print each fingerprint metric with its Z-score vs the author's baseline."""
+    if not config.fingerprint.enabled:
+        return
+    from codeassay.db import get_author_baselines
+    from codeassay.detection.fingerprint import (
+        METRIC_NAMES, metric_avg_diff_size, metric_comment_ratio,
+        metric_identifier_entropy, metric_punctuation_density, metric_message_length,
+    )
+    from codeassay.scanner import _added_lines_for_commit
+
+    db_path = get_db_path(repo_path)
+    if not db_path.exists():
+        print("  (no scan data; run `codeassay scan .` first to build baselines)")
+        return
+    conn2 = get_connection(db_path)
+    try:
+        email = commit.get("author_email", "")
+        baselines = get_author_baselines(conn2, repo_path=str(repo_path), author_email=email)
+    finally:
+        conn2.close()
+    if not baselines:
+        print(f"  (no baselines for {email})")
+        return
+    added_lines = _added_lines_for_commit(repo_path, commit["hash"])
+    fp_metrics = {
+        "avg_diff_size": metric_avg_diff_size(lines_added=len(added_lines)),
+        "comment_ratio": metric_comment_ratio(added_lines),
+        "identifier_entropy": metric_identifier_entropy(added_lines),
+        "punctuation_density": metric_punctuation_density(commit["message"]),
+        "message_length": float(metric_message_length(commit["message"])),
+    }
+    print("Fingerprint breakdown (z-scores vs author baseline):")
+    for name in METRIC_NAMES:
+        b = baselines.get(name)
+        if b is None:
+            print(f"  {name}: no baseline")
+            continue
+        v = fp_metrics[name]
+        if b.stddev == 0:
+            z = float("inf") if v != b.mean else 0.0
+        else:
+            z = (v - b.mean) / b.stddev
+        flag = "**" if abs(z) >= config.fingerprint.sigma_threshold else "  "
+        print(f"  {flag} {name}: value={v:.3f} mean={b.mean:.3f} z={z:+.2f}")
 
 
 def cmd_uninstall_hook(args) -> None:
