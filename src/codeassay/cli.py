@@ -69,6 +69,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Force-enable probabilistic scorer for this scan")
     scan_p.add_argument("--dry-run", action="store_true",
                         help="Report matches without writing to DB")
+    scan_p.add_argument(
+        "--fail-on", choices=["turnover-red"],
+        help="Exit non-zero when a threshold is exceeded (e.g. turnover-red)",
+    )
 
     report_p = sub.add_parser("report", help="Generate quality report")
     report_p.add_argument("--format", choices=["cli", "markdown"], default="cli")
@@ -151,6 +155,35 @@ def cmd_scan(args) -> None:
             f"{rework_result['rework_events']} rework events"
         )
         conn.close()
+
+    # Evaluate --fail-on threshold (after all repos scanned)
+    if getattr(args, "fail_on", None) == "turnover-red":
+        any_red = False
+        for repo_str in args.repos:
+            repo_path = Path(repo_str).resolve()
+            if not (repo_path / ".git").exists():
+                continue
+            db_path = get_db_path(repo_path)
+            if not db_path.exists():
+                continue
+            cfg = load_config(repo_path)
+            conn = get_connection(db_path)
+            try:
+                total = _get_total_commit_count(repo_path)
+                m = compute_metrics(conn, repo_path=str(repo_path), total_commits=total)
+            finally:
+                conn.close()
+            ai_turnover = m.get("turnover_ai", 0.0)
+            if ai_turnover > cfg.turnover.red_threshold:
+                print(
+                    f"FAIL: {repo_path.name} AI turnover "
+                    f"{ai_turnover*100:.1f}% exceeds red threshold "
+                    f"{cfg.turnover.red_threshold*100:.1f}%",
+                    file=sys.stderr,
+                )
+                any_red = True
+        if any_red:
+            sys.exit(1)
 
 
 def cmd_report(args) -> None:
