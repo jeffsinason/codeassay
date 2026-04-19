@@ -97,3 +97,33 @@ def test_compute_trend_data_multiple_months(db_conn):
     assert trend[0]["ai_commits"] == 1
     assert trend[0]["rework_events"] == 0
     assert trend[1]["month"] == "2026-04"
+
+
+def test_metrics_includes_turnover(db_conn):
+    from codeassay.db import insert_ai_commit, insert_commit_line
+    # One AI commit with heavy turnover
+    insert_ai_commit(
+        db_conn, commit_hash="ai1", repo_path="/r", author="a",
+        date="2026-04-18T00:00:00Z", message="m", tool="claude_code",
+        detection_method="profile", confidence="high",
+        files_changed="a.py", source="profile:claude_code",
+    )
+    insert_commit_line(
+        db_conn, commit_sha="ai1", repo_path="/r", file="a.py",
+        lines_added=100, lines_survived=40,
+        measurement_window_end="2026-04-18",
+    )
+    # One human commit with low turnover
+    insert_commit_line(
+        db_conn, commit_sha="h1", repo_path="/r", file="b.py",
+        lines_added=100, lines_survived=90,
+        measurement_window_end="2026-04-18",
+    )
+    db_conn.commit()
+    m = compute_metrics(db_conn, repo_path="/r", total_commits=2)
+    assert "turnover_ai" in m
+    assert "turnover_human" in m
+    assert "turnover_ratio" in m
+    assert m["turnover_ai"] == pytest.approx(0.6, abs=0.01)
+    assert m["turnover_human"] == pytest.approx(0.1, abs=0.01)
+    assert m["turnover_ratio"] == pytest.approx(6.0, abs=0.01)

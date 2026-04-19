@@ -3,6 +3,8 @@
 from collections import Counter
 from datetime import datetime
 
+from codeassay.turnover import CommitLineRecord, compute_turnover_metrics
+
 
 def compute_metrics(conn, *, repo_path: str | None = None, total_commits: int = 0) -> dict:
     if repo_path:
@@ -55,6 +57,26 @@ def compute_metrics(conn, *, repo_path: str | None = None, total_commits: int = 
                 file_counts[f] += 1
     top_files = file_counts.most_common(5)
 
+    # Turnover aggregation
+    if repo_path:
+        line_rows = conn.execute(
+            "SELECT commit_sha, file, lines_added, lines_survived "
+            "FROM commit_lines WHERE repo_path = ?", (repo_path,)
+        ).fetchall()
+    else:
+        line_rows = conn.execute(
+            "SELECT commit_sha, file, lines_added, lines_survived FROM commit_lines"
+        ).fetchall()
+    ai_shas = {c["commit_hash"] for c in ai_commits}
+    records = [
+        CommitLineRecord(
+            commit_sha=r["commit_sha"], file=r["file"],
+            lines_added=r["lines_added"], lines_survived=r["lines_survived"],
+        )
+        for r in line_rows
+    ]
+    summary = compute_turnover_metrics(records, ai_shas=ai_shas)
+
     return {
         "ai_commit_count": ai_count,
         "human_commit_count": total_commits - ai_count,
@@ -68,6 +90,16 @@ def compute_metrics(conn, *, repo_path: str | None = None, total_commits: int = 
         "rework_by_tool": dict(tool_rework),
         "mean_time_to_rework_hours": round(mean_time_hours, 1),
         "top_rework_files": top_files,
+        "turnover_ai": round(summary.ai_turnover, 4),
+        "turnover_human": round(summary.human_turnover, 4),
+        "turnover_ratio": (
+            round(summary.ai_turnover_ratio, 2)
+            if summary.ai_turnover_ratio is not None else None
+        ),
+        "turnover_ai_lines_added": summary.ai_lines_added,
+        "turnover_ai_lines_discarded": summary.ai_lines_discarded,
+        "turnover_human_lines_added": summary.human_lines_added,
+        "turnover_human_lines_discarded": summary.human_lines_discarded,
     }
 
 
