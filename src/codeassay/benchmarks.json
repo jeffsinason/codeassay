@@ -1,0 +1,18 @@
+{
+  "turnover_rate": {
+    "pre_ai_baseline": 0.033,
+    "industry_2026": 0.057,
+    "healthy_target": 0.04,
+    "sources": [
+      {
+        "name": "Larridin Code Turnover Report 2026",
+        "url": "https://larridin.example/report-2026"
+      },
+      {
+        "name": "GitClear Code Churn Research",
+        "url": "https://gitclear.example/churn-research"
+      }
+    ],
+    "last_updated": "2026-04-19"
+  }
+}

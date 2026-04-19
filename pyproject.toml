@@ -29,6 +29,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "codeassay.profiles" = ["*.toml"]
+"codeassay" = ["benchmarks.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

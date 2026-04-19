@@ -10,8 +10,10 @@ metric. Computed separately for AI vs human cohorts.
 
 from __future__ import annotations
 
+import json
 import subprocess
 from dataclasses import dataclass
+from importlib import resources
 from pathlib import Path
 from typing import Iterable
 
@@ -122,4 +124,26 @@ def compute_turnover_metrics(
         ai_turnover=ai_rate,
         human_turnover=hu_rate,
         ai_turnover_ratio=ratio,
+    )
+
+
+@dataclass(frozen=True)
+class Benchmarks:
+    pre_ai_baseline: float
+    industry_2026: float
+    healthy_target: float
+    sources: list[dict]
+    last_updated: str
+
+
+def load_benchmarks() -> Benchmarks:
+    """Load bundled turnover benchmarks from package data."""
+    raw = resources.files("codeassay").joinpath("benchmarks.json").read_text(encoding="utf-8")
+    data = json.loads(raw)["turnover_rate"]
+    return Benchmarks(
+        pre_ai_baseline=float(data["pre_ai_baseline"]),
+        industry_2026=float(data["industry_2026"]),
+        healthy_target=float(data["healthy_target"]),
+        sources=list(data.get("sources", [])),
+        last_updated=str(data.get("last_updated", "")),
     )
