@@ -5,7 +5,10 @@ STARTER_TEMPLATE = '''\
 # Docs: see docs/superpowers/specs in the codeassay source.
 
 # ---------- Built-in AI tool profiles ----------
-# Enabled by default. Set enabled = false to disable any profile for this repo.
+# Enabled by default. To disable a profile, change `enabled = true` to
+# `enabled = false` on its line below. Do NOT add a second [profiles.<name>]
+# block lower in the file — TOML forbids duplicate table declarations and
+# will reject the file.
 
 [profiles.claude_code]
 enabled = true
