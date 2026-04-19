@@ -1,6 +1,10 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/jeffsinason/codeassay/main/codeassay_logo.png" alt="CodeAssay" width="240"/>
+</p>
+
 # CodeAssay
 
-Git forensics tool for analyzing AI-authored code quality. Detects AI-generated commits, identifies rework, classifies root causes, and generates quality reports.
+Git forensics tool for analyzing AI-authored code quality. Detects AI-generated commits, identifies rework, classifies root causes, measures code turnover rate, and generates quality reports.
 
 ## Install
 
@@ -25,7 +29,7 @@ codeassay scan ../repo1 ../repo2 ../repo3
 
 | Command | Purpose |
 |---------|---------|
-| `codeassay scan <paths>` | Scan repos for AI commits and rework (supports `--with-scorer`, `--dry-run`) |
+| `codeassay scan <paths>` | Scan repos (supports `--with-scorer`, `--dry-run`, `--fail-on=turnover-red`) |
 | `codeassay report` | Generate quality report (CLI or markdown) |
 | `codeassay commits` | List AI-authored commits (supports `--source <glob>`, `--tool`) |
 | `codeassay rework` | List rework events with classification |
@@ -49,6 +53,18 @@ codeassay scan ../repo1 ../repo2 ../repo3
 
 First match wins. Run `codeassay config init` to scaffold a starter config, `codeassay config show` to inspect the effective config, and `codeassay detect-test <hash>` to dry-run detection against a single commit.
 
+**Per-author fingerprint detection** (opt-in) catches AI commits from authors with ≥20 prior commits by comparing each commit against the author's historical baseline on 5 metrics (diff size, comment ratio, identifier entropy, punctuation density, message length). Flags when ≥3 metrics diverge ≥2σ. Enable in `.codeassay.toml`:
+
+```toml
+[fingerprint]
+enabled = true
+min_prior_commits = 20
+sigma_threshold = 2.0
+min_divergent_metrics = 3
+```
+
+Use `codeassay detect-test <hash>` to see per-metric Z-scores when tuning thresholds.
+
 To reliably tag AI commits going forward, install a git hook:
 
 ```bash
@@ -62,6 +78,26 @@ This appends `AI-Assisted: cursor` to each commit message (idempotent — skips 
 **Classification** categorizes rework into 7 types using commit message keywords and diff shape analysis:
 - Bug fix, Misunderstanding, Test failure, Style/convention violation
 - Security issue, Incomplete implementation, Over-engineering
+
+## Turnover Rate
+
+**Turnover Rate** measures the fraction of lines added in a lookback window that are subsequently discarded or rewritten. Computed separately for AI and human cohorts; the **AI/human ratio** is the headline number. CodeAssay ships `benchmarks.json` with industry baselines (pre-AI 3.3%, 2026 avg 5.7%, healthy target <4%) so your report can show percentile vs industry.
+
+Configure thresholds in `.codeassay.toml`:
+
+```toml
+[turnover]
+lookback_days = 90
+rewrite_window_days = 30
+yellow_threshold = 0.04
+red_threshold = 0.06
+```
+
+Fail CI builds on excessive turnover:
+
+```bash
+codeassay scan . --fail-on=turnover-red
+```
 
 ## Dashboard
 

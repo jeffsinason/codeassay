@@ -64,3 +64,22 @@ def test_generated_config_is_valid_toml(tmp_path):
     # Should also load via our DetectionConfig loader without raising.
     cfg = load_config(tmp_path)
     assert cfg.score.enabled is False
+
+
+def test_starter_template_has_toml_guidance_comment(tmp_path):
+    """The template must warn users against re-declaring [profiles.X] blocks."""
+    result = subprocess.run(
+        [sys.executable, "-m", "codeassay", "config", "init"],
+        cwd=tmp_path, capture_output=True, text=True,
+    )
+    assert result.returncode == 0
+    content = (tmp_path / ".codeassay.toml").read_text()
+    # Guidance comment must appear before the first [profiles.X] header
+    profiles_idx = content.index("[profiles.")
+    guidance_idx = content.index("Do NOT add a second")
+    assert guidance_idx < profiles_idx, (
+        "Guidance comment must precede the profiles block"
+    )
+    # Must explicitly mention changing enabled = true -> false
+    assert "enabled = false" in content[:profiles_idx]
+    assert "TOML forbids duplicate" in content

@@ -82,6 +82,12 @@ DASHBOARD_TEMPLATE = """<!DOCTYPE html>
     <div class="value" style="color: var(--yellow)">{mean_time_to_rework}h</div>
     <div class="detail">average hours to fix</div>
   </div>
+  <div class="card">
+    <div class="label">Turnover Ratio (AI/Human)</div>
+    <div class="value" style="color: var(--accent)">{turnover_ratio}</div>
+    <div class="detail">AI {turnover_ai_pct}% &bull; Human {turnover_human_pct}%</div>
+    <div class="detail">Benchmark: healthy &lt;2x</div>
+  </div>
 </div>
 
 <div class="charts">
@@ -177,10 +183,21 @@ if (DATA.trend.length > 0) {{
       labels: DATA.trend.map(t => t.month),
       datasets: [
         {{ label: 'AI Commits', data: DATA.trend.map(t => t.ai_commits), borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.1)', fill: true, tension: 0.3 }},
-        {{ label: 'Rework Events', data: DATA.trend.map(t => t.rework_events), borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,0.1)', fill: true, tension: 0.3 }}
+        {{ label: 'Rework Events', data: DATA.trend.map(t => t.rework_events), borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,0.1)', fill: true, tension: 0.3 }},
+        {{ label: 'AI Turnover %', data: DATA.trend.map(t => (t.turnover_ai || 0) * 100), borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.1)', fill: false, tension: 0.3, yAxisID: 'y1' }}
       ]
     }},
-    options: {{ scales: {{ y: {{ beginAtZero: true }} }} }}
+    options: {{
+      scales: {{
+        y: {{ beginAtZero: true }},
+        y1: {{
+          beginAtZero: true,
+          position: 'right',
+          grid: {{ drawOnChartArea: false }},
+          title: {{ display: true, text: 'Turnover %' }}
+        }}
+      }}
+    }}
   }});
 }}
 
@@ -222,6 +239,11 @@ def generate_dashboard(metrics: dict, trend_data: list[dict], repo_name: str = "
 
     first_pass_count = metrics["ai_commit_count"] - metrics["reworked_commit_count"]
 
+    turnover_ratio_raw = metrics.get("turnover_ratio")
+    turnover_ratio_display = f"{turnover_ratio_raw:.2f}x" if turnover_ratio_raw is not None else "N/A"
+    turnover_ai_pct = f"{metrics.get('turnover_ai', 0) * 100:.1f}"
+    turnover_human_pct = f"{metrics.get('turnover_human', 0) * 100:.1f}"
+
     return DASHBOARD_TEMPLATE.format(
         repo_name=repo_name,
         date=datetime.now().strftime("%Y-%m-%d"),
@@ -233,6 +255,9 @@ def generate_dashboard(metrics: dict, trend_data: list[dict], repo_name: str = "
         rework_rate=metrics["rework_rate"],
         rework_count=metrics["rework_count"],
         mean_time_to_rework=metrics["mean_time_to_rework_hours"],
+        turnover_ratio=turnover_ratio_display,
+        turnover_ai_pct=turnover_ai_pct,
+        turnover_human_pct=turnover_human_pct,
         chartjs_source=CHARTJS_MIN,
         data_json=json.dumps(data_blob),
     )

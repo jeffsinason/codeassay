@@ -36,6 +36,27 @@ CREATE TABLE IF NOT EXISTS scan_metadata (
     repo_path TEXT PRIMARY KEY,
     last_scanned_commit TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS commit_lines (
+    commit_sha TEXT NOT NULL,
+    repo_path TEXT NOT NULL,
+    file TEXT NOT NULL,
+    lines_added INTEGER NOT NULL,
+    lines_survived INTEGER NOT NULL,
+    measurement_window_end TEXT NOT NULL,
+    PRIMARY KEY (commit_sha, repo_path, file)
+);
+
+CREATE TABLE IF NOT EXISTS author_baselines (
+    repo_path TEXT NOT NULL,
+    author_email TEXT NOT NULL,
+    metric_name TEXT NOT NULL,
+    mean_value REAL NOT NULL,
+    stddev_value REAL NOT NULL,
+    sample_size INTEGER NOT NULL,
+    last_updated_sha TEXT NOT NULL,
+    PRIMARY KEY (repo_path, author_email, metric_name)
+);
 """
 
 
@@ -175,3 +196,76 @@ def set_rework_override(
         (new_category, rework_commit),
     )
     conn.commit()
+
+
+def insert_commit_line(
+    conn: sqlite3.Connection,
+    *,
+    commit_sha: str,
+    repo_path: str,
+    file: str,
+    lines_added: int,
+    lines_survived: int,
+    measurement_window_end: str,
+) -> None:
+    """Insert (or replace) a per-commit per-file line-survival record.
+
+    Caller is responsible for committing. `measurement_window_end` is a
+    date-only ISO string (YYYY-MM-DD) representing the day the blame was
+    taken; `lines_survived` is accurate as of that date's HEAD.
+    """
+    conn.execute(
+        """INSERT OR REPLACE INTO commit_lines
+           (commit_sha, repo_path, file, lines_added,
+            lines_survived, measurement_window_end)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (commit_sha, repo_path, file, lines_added, lines_survived,
+         measurement_window_end),
+    )
+
+
+def upsert_author_baseline(
+    conn: sqlite3.Connection,
+    *,
+    repo_path: str,
+    author_email: str,
+    metric_name: str,
+    mean_value: float,
+    stddev_value: float,
+    sample_size: int,
+    last_updated_sha: str,
+) -> None:
+    """Insert or update a per-(author, metric) baseline row."""
+    conn.execute(
+        """INSERT INTO author_baselines
+           (repo_path, author_email, metric_name, mean_value, stddev_value,
+            sample_size, last_updated_sha)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(repo_path, author_email, metric_name) DO UPDATE SET
+             mean_value = excluded.mean_value,
+             stddev_value = excluded.stddev_value,
+             sample_size = excluded.sample_size,
+             last_updated_sha = excluded.last_updated_sha""",
+        (repo_path, author_email, metric_name, mean_value, stddev_value,
+         sample_size, last_updated_sha),
+    )
+    conn.commit()
+
+
+def get_author_baselines(
+    conn: sqlite3.Connection, *, repo_path: str, author_email: str,
+) -> dict:
+    """Return {metric_name: Baseline} for an author, or empty dict."""
+    from codeassay.detection.fingerprint import Baseline
+    rows = conn.execute(
+        "SELECT metric_name, mean_value, stddev_value, sample_size "
+        "FROM author_baselines WHERE repo_path = ? AND author_email = ?",
+        (repo_path, author_email),
+    ).fetchall()
+    return {
+        r["metric_name"]: Baseline(
+            mean=r["mean_value"], stddev=r["stddev_value"],
+            sample_size=r["sample_size"],
+        )
+        for r in rows
+    }

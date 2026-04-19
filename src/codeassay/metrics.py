@@ -3,6 +3,8 @@
 from collections import Counter
 from datetime import datetime
 
+from codeassay.turnover import CommitLineRecord, compute_turnover_metrics
+
 
 def compute_metrics(conn, *, repo_path: str | None = None, total_commits: int = 0) -> dict:
     if repo_path:
@@ -55,6 +57,26 @@ def compute_metrics(conn, *, repo_path: str | None = None, total_commits: int = 
                 file_counts[f] += 1
     top_files = file_counts.most_common(5)
 
+    # Turnover aggregation
+    if repo_path:
+        line_rows = conn.execute(
+            "SELECT commit_sha, file, lines_added, lines_survived "
+            "FROM commit_lines WHERE repo_path = ?", (repo_path,)
+        ).fetchall()
+    else:
+        line_rows = conn.execute(
+            "SELECT commit_sha, file, lines_added, lines_survived FROM commit_lines"
+        ).fetchall()
+    ai_shas = {c["commit_hash"] for c in ai_commits}
+    records = [
+        CommitLineRecord(
+            commit_sha=r["commit_sha"], file=r["file"],
+            lines_added=r["lines_added"], lines_survived=r["lines_survived"],
+        )
+        for r in line_rows
+    ]
+    summary = compute_turnover_metrics(records, ai_shas=ai_shas)
+
     return {
         "ai_commit_count": ai_count,
         "human_commit_count": total_commits - ai_count,
@@ -68,6 +90,16 @@ def compute_metrics(conn, *, repo_path: str | None = None, total_commits: int = 
         "rework_by_tool": dict(tool_rework),
         "mean_time_to_rework_hours": round(mean_time_hours, 1),
         "top_rework_files": top_files,
+        "turnover_ai": round(summary.ai_turnover, 4),
+        "turnover_human": round(summary.human_turnover, 4),
+        "turnover_ratio": (
+            round(summary.ai_turnover_ratio, 2)
+            if summary.ai_turnover_ratio is not None else None
+        ),
+        "turnover_ai_lines_added": summary.ai_lines_added,
+        "turnover_ai_lines_discarded": summary.ai_lines_discarded,
+        "turnover_human_lines_added": summary.human_lines_added,
+        "turnover_human_lines_discarded": summary.human_lines_discarded,
     }
 
 
@@ -101,7 +133,7 @@ def compute_trend_data(conn, *, repo_path: str | None = None) -> list[dict]:
     rework_by_month = {r["month"]: r["cnt"] for r in rework_rows}
 
     all_months = sorted(set(ai_by_month) | set(rework_by_month))
-    return [
+    trend = [
         {
             "month": m,
             "ai_commits": ai_by_month.get(m, 0),
@@ -109,3 +141,31 @@ def compute_trend_data(conn, *, repo_path: str | None = None) -> list[dict]:
         }
         for m in all_months
     ]
+
+    # Monthly AI turnover (human cohort at month granularity is out of scope)
+    for entry in trend:
+        month = entry["month"]  # "YYYY-MM"
+        if repo_path:
+            rows = conn.execute(
+                "SELECT c.commit_sha, c.file, c.lines_added, c.lines_survived "
+                "FROM commit_lines c JOIN ai_commits a "
+                "  ON a.commit_hash = c.commit_sha AND a.repo_path = c.repo_path "
+                "WHERE c.repo_path = ? AND substr(a.date, 1, 7) = ?",
+                (repo_path, month),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT c.commit_sha, c.file, c.lines_added, c.lines_survived "
+                "FROM commit_lines c JOIN ai_commits a "
+                "  ON a.commit_hash = c.commit_sha "
+                "WHERE substr(a.date, 1, 7) = ?", (month,),
+            ).fetchall()
+        ai_shas_month = {r["commit_sha"] for r in rows}
+        records = [
+            CommitLineRecord(r["commit_sha"], r["file"], r["lines_added"], r["lines_survived"])
+            for r in rows
+        ]
+        summary = compute_turnover_metrics(records, ai_shas=ai_shas_month)
+        entry["turnover_ai"] = round(summary.ai_turnover, 4)
+
+    return trend

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "codeassay"
-version = "0.2.0"
+version = "0.3.0"
 description = "Git forensics tool for analyzing AI-authored code quality"
 readme = "README.md"
 license = "MIT"
@@ -29,6 +29,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "codeassay.profiles" = ["*.toml"]
+"codeassay" = ["benchmarks.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

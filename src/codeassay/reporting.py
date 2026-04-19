@@ -45,6 +45,17 @@ def format_cli_report(metrics: dict, repo_name: str = "Repository") -> str:
         top = metrics["top_rework_files"][0]
         lines.append(f"  Top rework file: {top[0]} ({top[1]} events)")
 
+    # Turnover section
+    ai_t = metrics.get("turnover_ai", 0.0)
+    hu_t = metrics.get("turnover_human", 0.0)
+    ratio = metrics.get("turnover_ratio")
+    ratio_s = f"{ratio:.2f}x" if ratio is not None else "N/A"
+    lines.append("")
+    lines.append("Turnover (lines added then discarded within rewrite window)")
+    lines.append(f"  AI:    {ai_t * 100:.1f}%   ({metrics.get('turnover_ai_lines_discarded', 0)} / {metrics.get('turnover_ai_lines_added', 0)} lines)")
+    lines.append(f"  Human: {hu_t * 100:.1f}%   ({metrics.get('turnover_human_lines_discarded', 0)} / {metrics.get('turnover_human_lines_added', 0)} lines)")
+    lines.append(f"  Ratio: {ratio_s} (AI / human)")
+
     return "\n".join(lines) + "\n"
 
 
@@ -85,5 +96,20 @@ def format_markdown_report(metrics: dict, repo_name: str = "Repository") -> str:
         for filepath, count in metrics["top_rework_files"]:
             lines.append(f"| `{filepath}` | {count} |")
         lines.append("")
+
+    # Turnover section
+    ai_t = metrics.get("turnover_ai", 0.0)
+    hu_t = metrics.get("turnover_human", 0.0)
+    ratio = metrics.get("turnover_ratio")
+    ratio_s = f"{ratio:.2f}x" if ratio is not None else "N/A"
+    lines.append("## Turnover")
+    lines.append("")
+    lines.append("| Cohort | Turnover rate | Lines added | Lines discarded |")
+    lines.append("|---|---|---|---|")
+    lines.append(f"| AI | {ai_t * 100:.1f}% | {metrics.get('turnover_ai_lines_added', 0)} | {metrics.get('turnover_ai_lines_discarded', 0)} |")
+    lines.append(f"| Human | {hu_t * 100:.1f}% | {metrics.get('turnover_human_lines_added', 0)} | {metrics.get('turnover_human_lines_discarded', 0)} |")
+    lines.append("")
+    lines.append(f"**AI / Human turnover ratio:** {ratio_s}")
+    lines.append("")
 
     return "\n".join(lines)

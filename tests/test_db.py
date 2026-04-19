@@ -233,3 +233,58 @@ def test_insert_ai_commit_accepts_detection_confidence(db_conn):
     )
     rows = get_ai_commits(db_conn, repo_path="/r")
     assert rows[0]["detection_confidence"] == 90
+
+
+def test_commit_lines_table_exists(tmp_path):
+    db_path = tmp_path / "q.db"
+    init_db(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(commit_lines)")]
+    finally:
+        conn.close()
+    for expected in ["commit_sha", "repo_path", "file", "lines_added",
+                     "lines_survived", "measurement_window_end"]:
+        assert expected in cols, f"missing column: {expected}"
+
+
+def test_author_baselines_table_exists(tmp_path):
+    db_path = tmp_path / "q.db"
+    init_db(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(author_baselines)")]
+    finally:
+        conn.close()
+    for expected in ["repo_path", "author_email", "metric_name",
+                     "mean_value", "stddev_value", "sample_size",
+                     "last_updated_sha"]:
+        assert expected in cols, f"missing column: {expected}"
+
+
+def test_legacy_db_gets_new_tables(tmp_path):
+    """A DB created before v0.3 must get the new tables on re-init."""
+    db_path = tmp_path / "q.db"
+    legacy = sqlite3.connect(db_path)
+    legacy.executescript("""
+        CREATE TABLE ai_commits (
+            commit_hash TEXT NOT NULL,
+            repo_path TEXT NOT NULL,
+            author TEXT, date TEXT, message TEXT,
+            tool TEXT, detection_method TEXT, confidence TEXT,
+            files_changed TEXT, source TEXT, detection_confidence INTEGER,
+            PRIMARY KEY (commit_hash, repo_path)
+        );
+    """)
+    legacy.commit()
+    legacy.close()
+    init_db(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        tables = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )}
+    finally:
+        conn.close()
+    assert "commit_lines" in tables
+    assert "author_baselines" in tables

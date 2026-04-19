@@ -4,7 +4,8 @@ from pathlib import Path
 import pytest
 
 from codeassay.detection.config import (
-    DetectionConfig, RuleSpec, ScoreConfig, WindowSpec, load_config,
+    DetectionConfig, FingerprintConfig, RuleSpec, ScoreConfig, TurnoverConfig,
+    WindowSpec, load_config,
 )
 
 
@@ -174,3 +175,66 @@ tool = "claude_code"
     with pytest.raises(ValueError) as exc:
         load_config(tmp_path)
     assert "detect.window[0]" in str(exc.value)
+
+
+def test_turnover_config_defaults(tmp_path):
+    cfg = load_config(tmp_path)
+    assert isinstance(cfg.turnover, TurnoverConfig)
+    assert cfg.turnover.lookback_days == 90
+    assert cfg.turnover.rewrite_window_days == 30
+    assert cfg.turnover.yellow_threshold == 0.04
+    assert cfg.turnover.red_threshold == 0.06
+
+
+def test_turnover_config_overrides(tmp_path):
+    _write(tmp_path, """
+[turnover]
+lookback_days = 60
+rewrite_window_days = 14
+yellow_threshold = 0.05
+red_threshold = 0.08
+""")
+    cfg = load_config(tmp_path)
+    assert cfg.turnover.lookback_days == 60
+    assert cfg.turnover.rewrite_window_days == 14
+    assert cfg.turnover.yellow_threshold == 0.05
+    assert cfg.turnover.red_threshold == 0.08
+
+
+def test_fingerprint_config_defaults(tmp_path):
+    cfg = load_config(tmp_path)
+    assert isinstance(cfg.fingerprint, FingerprintConfig)
+    assert cfg.fingerprint.enabled is False
+    assert cfg.fingerprint.min_prior_commits == 20
+    assert cfg.fingerprint.sigma_threshold == 2.0
+    assert cfg.fingerprint.min_divergent_metrics == 3
+
+
+def test_fingerprint_config_enabled(tmp_path):
+    _write(tmp_path, """
+[fingerprint]
+enabled = true
+min_prior_commits = 30
+sigma_threshold = 2.5
+min_divergent_metrics = 4
+""")
+    cfg = load_config(tmp_path)
+    assert cfg.fingerprint.enabled is True
+    assert cfg.fingerprint.min_prior_commits == 30
+    assert cfg.fingerprint.sigma_threshold == 2.5
+    assert cfg.fingerprint.min_divergent_metrics == 4
+
+
+def test_turnover_and_fingerprint_not_in_unknown_warning(tmp_path, capsys):
+    _write(tmp_path, """
+[turnover]
+lookback_days = 60
+
+[fingerprint]
+enabled = true
+""")
+    load_config(tmp_path)
+    captured = capsys.readouterr()
+    # Neither section name should appear in an "unknown top-level key" warning
+    assert "turnover" not in captured.err.lower() or "unknown" not in captured.err.lower()
+    assert "fingerprint" not in captured.err.lower() or "unknown" not in captured.err.lower()

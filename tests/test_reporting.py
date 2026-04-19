@@ -61,3 +61,26 @@ def test_format_markdown_report_handles_empty():
     }
     output = format_markdown_report(empty, repo_name="Empty Repo")
     assert "No AI commits" in output
+
+
+def test_cli_report_shows_turnover():
+    metrics = {**SAMPLE_METRICS,
+        "turnover_ai": 0.08, "turnover_human": 0.03, "turnover_ratio": 2.67,
+        "turnover_ai_lines_added": 500, "turnover_ai_lines_discarded": 40,
+        "turnover_human_lines_added": 2000, "turnover_human_lines_discarded": 60,
+    }
+    out = format_cli_report(metrics, repo_name="r")
+    assert "Turnover" in out
+    assert "8.0" in out or "8%" in out  # AI turnover 8%
+    assert "2.67" in out  # ratio
+
+
+def test_markdown_report_shows_turnover():
+    metrics = {**SAMPLE_METRICS,
+        "turnover_ai": 0.08, "turnover_human": 0.03, "turnover_ratio": 2.67,
+        "turnover_ai_lines_added": 500, "turnover_ai_lines_discarded": 40,
+        "turnover_human_lines_added": 2000, "turnover_human_lines_discarded": 60,
+    }
+    out = format_markdown_report(metrics, repo_name="r")
+    assert "Turnover" in out
+    assert "|" in out  # still a markdown table
