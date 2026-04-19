@@ -103,3 +103,48 @@ def test_classify_scorer_produces_numeric_confidence():
     # (source is "score:0.XX"); extract and compare within a small tolerance.
     raw = float(d.source.split(":")[1])
     assert abs(d.detection_confidence - int(round(raw * 100))) <= 1
+
+
+def test_classify_fingerprint_fires_when_enabled():
+    from codeassay.detection.fingerprint import Baseline
+    cfg = DetectionConfig()
+    cfg.fingerprint.enabled = True
+    baselines_fn = lambda email: {
+        name: Baseline(mean=10.0, stddev=1.0, sample_size=30)
+        for name in ("avg_diff_size", "comment_ratio", "identifier_entropy",
+                     "punctuation_density", "message_length")
+    }
+    commit_metrics = {name: 20.0 for name in (  # all 5σ above mean
+        "avg_diff_size", "comment_ratio", "identifier_entropy",
+        "punctuation_density", "message_length",
+    )}
+    d = classify(
+        _commit(), config=cfg, profiles=[],
+        diff_stats=[], seconds_since_prior=None,
+        baselines_for_author=baselines_fn,
+        commit_fingerprint_metrics=commit_metrics,
+    )
+    assert d is not None
+    assert d.method == "fingerprint"
+    assert d.source.startswith("fingerprint:")
+    assert d.detection_confidence >= 50
+
+
+def test_classify_fingerprint_skipped_when_disabled():
+    cfg = DetectionConfig()  # enabled defaults to False
+    from codeassay.detection.fingerprint import Baseline
+    baselines_fn = lambda email: {
+        name: Baseline(mean=10.0, stddev=1.0, sample_size=30)
+        for name in ("avg_diff_size", "comment_ratio", "identifier_entropy",
+                     "punctuation_density", "message_length")
+    }
+    commit_metrics = {name: 20.0 for name in (
+        "avg_diff_size", "comment_ratio", "identifier_entropy",
+        "punctuation_density", "message_length",
+    )}
+    d = classify(
+        _commit(), config=cfg, profiles=[],
+        baselines_for_author=baselines_fn,
+        commit_fingerprint_metrics=commit_metrics,
+    )
+    assert d is None

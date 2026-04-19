@@ -70,6 +70,8 @@ def classify(
     profiles: list,
     diff_stats: list | None = None,
     seconds_since_prior: int | None = None,
+    baselines_for_author=None,   # callable: email -> dict[metric_name, Baseline]
+    commit_fingerprint_metrics: dict | None = None,
 ) -> Detection | None:
     """Run detection pipeline. Returns Detection if AI, None if human.
 
@@ -77,7 +79,8 @@ def classify(
     1. User rules (author -> branch -> message -> window), first match wins.
     2. Enabled profiles (caller supplies them in alphabetic order), each
        evaluated in the same category order. First matching profile wins.
-    3. Probabilistic scorer (if config.score.enabled and score >= threshold).
+    3. Per-author fingerprint (if config.fingerprint.enabled).
+    4. Probabilistic scorer (if config.score.enabled and score >= threshold).
     """
     branches = set(commit.get("branches", set()) or set())
 
@@ -118,7 +121,33 @@ def classify(
                 detection_confidence=_confidence_to_numeric(rule.confidence),
             )
 
-    # 3. Scorer
+    # 3. Fingerprint
+    if (
+        config.fingerprint.enabled
+        and baselines_for_author is not None
+        and commit_fingerprint_metrics is not None
+    ):
+        from codeassay.detection.fingerprint import classify_by_fingerprint
+        email = commit.get("author_email", "") or ""
+        baselines = baselines_for_author(email)
+        if baselines:
+            fp = classify_by_fingerprint(
+                baselines=baselines,
+                commit_metrics=commit_fingerprint_metrics,
+                sigma=config.fingerprint.sigma_threshold,
+                min_divergent=config.fingerprint.min_divergent_metrics,
+                min_prior_commits=config.fingerprint.min_prior_commits,
+            )
+            if fp is not None:
+                return Detection(
+                    tool="unknown",
+                    confidence="medium",
+                    method="fingerprint",
+                    source=f"fingerprint:{email}:{fp.divergent_count}/5",
+                    detection_confidence=fp.confidence,
+                )
+
+    # 4. Scorer
     if config.score.enabled:
         s = score_commit(
             commit=commit,
