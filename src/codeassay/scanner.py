@@ -167,6 +167,7 @@ def scan_repo(
     needs_branches = bool(config.branch_rules) or any(p.branch_rules for p in profiles)
     scorer_on = config.score.enabled
 
+    today_iso = datetime.now().date().isoformat()
     chronological = list(reversed(commits))
     prior = None
     for commit in chronological:
@@ -183,8 +184,10 @@ def scan_repo(
 
         # Populate commit_lines for turnover — for all commits, AI or human.
         if not dry_run:
-            changed_files_csv = _get_changed_files(repo_path, commit["hash"])
-            today_iso = datetime.now().date().isoformat()
+            changed_files_csv = filter_files_csv(
+                _get_changed_files(repo_path, commit["hash"]),
+                ignore_patterns,
+            )
             for f in changed_files_csv.split(","):
                 if not f:
                     continue

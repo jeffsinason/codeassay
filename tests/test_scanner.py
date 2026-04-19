@@ -174,3 +174,6 @@ def test_scan_repo_populates_commit_lines(tmp_repo, db_conn):
     foo = next(r for r in rows if r["file"] == "foo.py")
     assert foo["lines_added"] == 3
     assert foo["lines_survived"] == 3
+    bar = next(r for r in rows if r["file"] == "bar.py")
+    assert bar["lines_added"] == 2
+    assert bar["lines_survived"] == 2

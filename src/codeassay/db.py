@@ -208,7 +208,12 @@ def insert_commit_line(
     lines_survived: int,
     measurement_window_end: str,
 ) -> None:
-    """Insert (or replace) a per-commit per-file line-survival record."""
+    """Insert (or replace) a per-commit per-file line-survival record.
+
+    Caller is responsible for committing. `measurement_window_end` is a
+    date-only ISO string (YYYY-MM-DD) representing the day the blame was
+    taken; `lines_survived` is accurate as of that date's HEAD.
+    """
     conn.execute(
         """INSERT OR REPLACE INTO commit_lines
            (commit_sha, repo_path, file, lines_added,
@@ -217,4 +222,3 @@ def insert_commit_line(
         (commit_sha, repo_path, file, lines_added, lines_survived,
          measurement_window_end),
     )
-    conn.commit()
