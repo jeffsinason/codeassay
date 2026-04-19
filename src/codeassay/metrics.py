@@ -133,7 +133,7 @@ def compute_trend_data(conn, *, repo_path: str | None = None) -> list[dict]:
     rework_by_month = {r["month"]: r["cnt"] for r in rework_rows}
 
     all_months = sorted(set(ai_by_month) | set(rework_by_month))
-    return [
+    trend = [
         {
             "month": m,
             "ai_commits": ai_by_month.get(m, 0),
@@ -141,3 +141,31 @@ def compute_trend_data(conn, *, repo_path: str | None = None) -> list[dict]:
         }
         for m in all_months
     ]
+
+    # Monthly AI turnover (human cohort at month granularity is out of scope)
+    for entry in trend:
+        month = entry["month"]  # "YYYY-MM"
+        if repo_path:
+            rows = conn.execute(
+                "SELECT c.commit_sha, c.file, c.lines_added, c.lines_survived "
+                "FROM commit_lines c JOIN ai_commits a "
+                "  ON a.commit_hash = c.commit_sha AND a.repo_path = c.repo_path "
+                "WHERE c.repo_path = ? AND substr(a.date, 1, 7) = ?",
+                (repo_path, month),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT c.commit_sha, c.file, c.lines_added, c.lines_survived "
+                "FROM commit_lines c JOIN ai_commits a "
+                "  ON a.commit_hash = c.commit_sha "
+                "WHERE substr(a.date, 1, 7) = ?", (month,),
+            ).fetchall()
+        ai_shas_month = {r["commit_sha"] for r in rows}
+        records = [
+            CommitLineRecord(r["commit_sha"], r["file"], r["lines_added"], r["lines_survived"])
+            for r in rows
+        ]
+        summary = compute_turnover_metrics(records, ai_shas=ai_shas_month)
+        entry["turnover_ai"] = round(summary.ai_turnover, 4)
+
+    return trend
