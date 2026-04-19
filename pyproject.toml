@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "codeassay"
-version = "0.1.1"
+version = "0.2.0"
 description = "Git forensics tool for analyzing AI-authored code quality"
 readme = "README.md"
 license = "MIT"
